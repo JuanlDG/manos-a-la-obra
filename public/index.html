@@ -225,6 +225,17 @@ input[readonly].ghost:hover{border-bottom-color:transparent}
 .btn.danger:hover{filter:brightness(1.08)}
 .yo-line{margin:0 0 4px;font-weight:700}
 dialog select,dialog input{font:inherit;font-weight:400;color:inherit;background:var(--card);border:1px solid var(--concrete);border-radius:6px;padding:10px 12px;width:100%;min-width:0}
+
+/* Parroquia: añadir a mi cuadrilla */
+.sq.add{background:var(--ok);color:#fff;font-size:1.5rem;display:grid;place-items:center;padding:0 0 3px}
+.sq.add:hover{background:var(--ok);color:#fff;filter:brightness(1.12)}
+@media (prefers-color-scheme:dark){.sq.add,.sq.add:hover{color:#11181F}}
+.row a.n{text-decoration:none;font-weight:700}
+.row a.n:hover{text-decoration:underline}
+#flash{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:var(--ok);color:#fff;text-align:center;font:800 clamp(1.8rem,7vw,3rem)/1.15 var(--display);cursor:pointer}
+#flash[hidden]{display:none}
+#flash b{font-weight:800;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px}
+@media (prefers-color-scheme:dark){#flash{color:#11181F}}
 </style>
 </head>
 <body>
@@ -240,6 +251,7 @@ dialog select,dialog input{font:inherit;font-weight:400;color:inherit;background
     </nav>
   </header>
   <div id="toast" role="status" hidden></div>
+<div id="flash" role="status" aria-live="assertive" hidden></div>
   <main id="view" aria-live="polite"><p class="empty">Cargando…</p></main>
 </div>
 
@@ -344,7 +356,9 @@ function save(c) {
   chain[c.id] = (chain[c.id] || Promise.resolve()).then(async () => {
     const r = await call("PUT", "/api/cuadrillas/" + c.id, cuad(c.id) || c);
     if (!r.ok && r.status) load(true);
+    return r;
   });
+  return chain[c.id];
 }
 async function load(force) {
   const [a, b, k] = await Promise.all([call("GET", "/api/cuadrillas", undefined, true), call("GET", "/api/compras", undefined, true), call("GET", "/api/catalog", undefined, true)]);
@@ -372,13 +386,14 @@ function home() {
 }
 
 function parroquia() {
+  const mine = !!S.yo && canEdit(); // el equipo motor añade a su propia cuadrilla
   const sec = k => {
     const a = S.cat.filter(e => e.kind === LISTS[k].kind && avail(e) > 0).sort(byName);
     return `<h2 class="h-sec">${LISTS[k].title}</h2>` + (a.length
-      ? "<ul>" + a.map(e => `<li><a class="row" href="#/inventario/${e.id}"><span class="n">${esc(e.name)}</span><span class="t">${esc(qtxt(avail(e), e.unit))}</span></a></li>`).join("") + "</ul>"
+      ? "<ul>" + a.map(e => `<li class="row"><a class="n" href="#/inventario/${e.id}">${esc(e.name)}</a><span class="t">${esc(qtxt(avail(e), e.unit))}</span>${mine ? `<button class="sq add" type="button" data-act="padd" data-k="${k}" data-i="${e.id}" aria-label="Añadir ${esc(e.name)} a ${esc(S.yo.cuadrilla.name)}">+</button>` : ""}</li>`).join("") + "</ul>"
       : `<p class="empty">No sobra ningún elemento de esta lista.</p>`);
   };
-  return `<a class="back" href="#/" aria-label="Volver a las cuadrillas">${BACK}</a><h1 class="h-sec big">Parroquia</h1><p class="mute">Lo que está en la bodega central y no está asignado a ninguna cuadrilla.</p>${sec("tools")}${sec("materials")}`;
+  return `<a class="back" href="#/" aria-label="Volver a las cuadrillas">${BACK}</a><h1 class="h-sec big">Parroquia</h1><p class="mute">Lo que está en la bodega central y no está asignado a ninguna cuadrilla.${S.yo && canEdit() ? ` Pulsa + para añadir una unidad a ${esc(S.yo.cuadrilla.name)}.` : ""}</p>${sec("tools")}${sec("materials")}`;
 }
 
 function qtyList(c, k) {
@@ -677,6 +692,25 @@ $("#yo-change").addEventListener("click", () => openWho(false));
 // Quien entra como usuario debe elegir quién es; si el administrador lo saca del equipo, vuelve a pedirse.
 function checkWho() { if (S.role === "usuario" && !S.yo && !$("#ydlg").open && !S.yoSkipped) { if (!equipo().length) S.yoSkipped = true; openWho(true); } }
 
+let flashTimer;
+function flash(itemName, cuadName) { // mensaje a pantalla completa, unos dos segundos
+  const f = $("#flash");
+  f.innerHTML = `<p><b>${esc(itemName)}</b> se ha añadido correctamente a la <b>${esc(cuadName)}</b></p>`;
+  f.hidden = false; clearTimeout(flashTimer); flashTimer = setTimeout(() => { f.hidden = true; }, 2000);
+}
+$("#flash").addEventListener("click", () => { $("#flash").hidden = true; });
+
+async function parroquiaAdd(b) {
+  const c = S.yo && cuad(S.yo.cuadrilla.id), e = item(b.dataset.i), k = b.dataset.k;
+  if (!c || !e) return toast("Primero elige tu nombre del equipo motor.");
+  if (avail(e) < 1) return toast(`No quedan “${e.name}” en la parroquia.`);
+  const cur = c[k].find(x => x.i === e.id);
+  if (cur) cur.q += 1; else c[k].push({ i: e.id, q: 1 });
+  render();
+  const r = await save(c); // si el servidor lo rechaza (otro se llevó lo último), save() vuelve a leer todo y avisa
+  if (r && r.ok) flash(e.name, c.name);
+}
+
 function askKind(name) {
   return new Promise(res => {
     const d = $("#kdlg"); d.querySelector("[data-name]").textContent = "“" + name + "”";
@@ -748,6 +782,7 @@ document.addEventListener("click", async e => {
   }
   if (act === "closedlg") return dlg.close();
   if (act === "who") return openWho(false);
+  if (act === "padd") return parroquiaAdd(b);
   if (["approve", "reject", "pending", "delsol", "closeStage", "bought"].includes(act)) return compraAction(b, act);
   if (act === "catdel") {
     const it = item(b.dataset.id);

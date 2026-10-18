@@ -53,3 +53,4 @@ Los datos se comparten entre todos los usuarios (tablas `catalog`, `cuadrillas` 
 - La primera vez que entra un usuario, elige su nombre de la lista del equipo motor. Desde entonces sus pedidos se firman solos con su nombre y su cuadrilla; puede cambiarlo con “Cambiar” en la barra superior. Si el administrador lo saca del equipo motor, vuelve a pedírsele.
 - El administrador, si no eligió identidad, firma como “Administrador” y elige la cuadrilla al pedir.
 - Eliminar un elemento de la bodega pide doble confirmación: primero “¿seguro?” y luego escribir su nombre. El servidor también exige el nombre.
+- En la vista Parroquia, quien ya eligió su nombre del equipo motor ve un botón + verde a la derecha de cada elemento: añade una unidad a su cuadrilla y muestra a pantalla completa, unos dos segundos, “… se ha añadido correctamente a la …”. El servidor sigue verificando que haya saldo.
