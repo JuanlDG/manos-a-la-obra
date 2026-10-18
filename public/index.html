@@ -236,6 +236,11 @@ dialog select,dialog input{font:inherit;font-weight:400;color:inherit;background
 #flash[hidden]{display:none}
 #flash b{font-weight:800;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px}
 @media (prefers-color-scheme:dark){#flash{color:#11181F}}
+
+.padd-row{display:grid;grid-template-columns:1fr 1fr auto;gap:6px}
+@media (max-width:520px){.padd-row{grid-template-columns:1fr}}
+.padd-row select{font:inherit;font-weight:400;color:inherit;background:var(--paper);border:1px solid var(--concrete);border-radius:6px;padding:10px 12px;min-width:0}
+.res .adm select{font:inherit;color:inherit;background:var(--paper);border:1px solid var(--concrete);border-radius:6px;padding:8px;min-width:0}
 </style>
 </head>
 <body>
@@ -246,7 +251,7 @@ dialog select,dialog input{font:inherit;font-weight:400;color:inherit;background
     <a class="brand" href="#/">Construcción Misiones</a>
     <nav class="nav" aria-label="Secciones">
       <a href="#/compras" data-nav="compras">Lista de compra<span class="badge" id="pend-badge" hidden></span></a>
-      <a href="#/alumnos" data-nav="alumnos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Alumnos</a>
+      <a href="#/personas" data-nav="personas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Personas</a>
       <a href="#/inventario" data-nav="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Inventario</a>
     </nav>
   </header>
@@ -306,7 +311,7 @@ dialog select,dialog input{font:inherit;font-weight:400;color:inherit;background
 
 <script src="/names.js"></script>
 <script>
-const S = { role: null, open: false, cat: [], cuad: [], compras: { etapas: [], solicitudes: [] }, yo: null, ready: false, openEtapa: {}, q: { alumnos: "", inventario: "" } };
+const S = { role: null, open: false, cat: [], cuad: [], compras: { etapas: [], solicitudes: [] }, personas: [], yo: null, ready: false, openEtapa: {}, q: { personas: "", inventario: "" } };
 const $ = s => document.querySelector(s);
 const view = $("#view"), dlg = $("#dlg");
 
@@ -361,10 +366,10 @@ function save(c) {
   return chain[c.id];
 }
 async function load(force) {
-  const [a, b, k] = await Promise.all([call("GET", "/api/cuadrillas", undefined, true), call("GET", "/api/compras", undefined, true), call("GET", "/api/catalog", undefined, true)]);
-  if (!a.ok || !b.ok || !k.ok) return;
-  let changed = JSON.stringify([a.data, b.data, k.data]) !== JSON.stringify([S.cuad, S.compras, S.cat]);
-  S.cuad = a.data.filter(c => !c.parroquia); S.compras = b.data; S.cat = k.data;
+  const [a, b, k, pe] = await Promise.all([call("GET", "/api/cuadrillas", undefined, true), call("GET", "/api/compras", undefined, true), call("GET", "/api/catalog", undefined, true), call("GET", "/api/personas", undefined, true)]);
+  if (!a.ok || !b.ok || !k.ok || !pe.ok) return;
+  let changed = JSON.stringify([a.data, b.data, k.data, pe.data]) !== JSON.stringify([S.cuad, S.compras, S.cat, S.personas]);
+  S.cuad = a.data.filter(c => !c.parroquia); S.compras = b.data; S.cat = k.data; S.personas = pe.data;
   const me = await call("GET", "/api/me", undefined, true);
   if (me.ok) { const prevYo = JSON.stringify(S.yo); S.yo = me.data.yo; updateWho(); if (JSON.stringify(S.yo) !== prevYo) changed = true; }
   checkWho();
@@ -416,12 +421,19 @@ const addPick = (c, k) => canEdit() ? `<form class="add pick" data-add="${k}" da
   <button class="btn" type="submit">Agregar</button>
   <p class="hint" role="status"></p></form>` : "";
 
-function chipList(c, k) {
-  const a = c[k], ed = isAdmin();
-  if (!a.length) return `<p class="empty">Nadie registrado todavía.</p>`;
-  return '<div class="chips">' + a.map((n, i) => `<div class="chip"><span>${esc(n)}</span>${ed ? `<button class="sq x" data-act="del" data-id="${c.id}" data-k="${k}" data-i="${i}" aria-label="Quitar a ${esc(n)}">×</button>` : ""}</div>`).join("") + "</div>";
+const ROLE_LABEL_P = { motor: "Equipo motor", alumno: "Alumno" };
+const peopleIn = (c, role) => S.personas.filter(p => p.cuadrilla === c.id && p.role === role);
+function chipList(c, role) {
+  const a = peopleIn(c, role), ed = isAdmin();
+  if (!a.length) return `<p class="empty">Nadie asignado todavía.</p>`;
+  return '<div class="chips">' + a.map(p => `<div class="chip"><span>${esc(p.name)}</span>${ed ? `<button class="sq x" data-act="unassign" data-p="${p.id}" aria-label="Quitar a ${esc(p.name)} de esta cuadrilla">×</button>` : ""}</div>`).join("") + "</div>";
 }
-const addPerson = (c, k) => isAdmin() ? `<form class="add one" data-add="${k}" data-id="${c.id}"><input name="n" placeholder="Nombre" required maxlength="60" aria-label="Nombre"><button class="btn" type="submit">Agregar</button></form>` : "";
+// El administrador escribe un nombre nuevo o elige a alguien que está sin cuadrilla.
+const addPerson = (c, role) => {
+  if (!isAdmin()) return "";
+  const free = S.personas.filter(p => !p.cuadrilla && p.role === role);
+  return `<form class="add one" data-addp="${role}" data-id="${c.id}" autocomplete="off"><input name="n" list="free-${role}" placeholder="${free.length ? "Nombre: elige a alguien sin cuadrilla o escribe uno nuevo" : "Nombre"}" required maxlength="60" aria-label="Nombre"><datalist id="free-${role}">${free.map(p => `<option value="${esc(p.name)}"></option>`).join("")}</datalist><button class="btn" type="submit">Agregar</button><p class="hint" role="status"></p></form>`;
+};
 
 function detail(id, tab) {
   const c = cuad(id), ro = canEdit() ? "" : " readonly";
@@ -429,7 +441,7 @@ function detail(id, tab) {
   const tabs = `<nav class="tabs" aria-label="Contenido de la cuadrilla"><a href="#/c/${c.id}/materiales"${tab === "materiales" ? ' aria-current="page"' : ""}>Materiales</a><a href="#/c/${c.id}/personas"${tab === "personas" ? ' aria-current="page"' : ""}>Personas</a></nav>`;
   const list = k => `<h2 class="h-sec">${LISTS[k].title}</h2>${qtyList(c, k)}${addPick(c, k)}`;
   const body = tab === "personas"
-    ? `${isAdmin() ? "" : `<p class="note">Solo el administrador puede agregar o quitar personas.</p>`}<h2 class="h-sec">Equipo motor</h2>${chipList(c, "motor")}${addPerson(c, "motor")}<h2 class="h-sec">Alumnos</h2>${chipList(c, "alumnos")}${addPerson(c, "alumnos")}`
+    ? `${isAdmin() ? `<p class="mute">Las personas también se pueden agregar sin cuadrilla desde la sección <a href="#/personas">Personas</a> y asignar después.</p>` : `<p class="note">Solo el administrador puede agregar o quitar personas.</p>`}<h2 class="h-sec">Equipo motor</h2>${chipList(c, "motor")}${addPerson(c, "motor")}<h2 class="h-sec">Alumnos</h2>${chipList(c, "alumno")}${addPerson(c, "alumno")}`
     : `${list("materials")}${list("tools")}`;
   const del = canEdit() ? `<button class="link-danger" data-act="rmc" data-id="${c.id}">Eliminar cuadrilla</button>` : "";
   return `<a class="back" href="#/" aria-label="Volver a las cuadrillas">${BACK}</a>
@@ -531,17 +543,30 @@ function compras() {
   ${cerradas.length ? `<h2 class="h-sec">Etapas cerradas</h2>${cerradas.map(e => etapaCerrada(e, solicitudes.filter(s => s.etapa === e.id))).join("")}` : ""}`;
 }
 
-function alumnosResults() {
-  const q = norm(S.q.alumnos), hits = [];
-  for (const c of S.cuad) {
-    for (const n of c.alumnos) if (norm(n).includes(q)) hits.push({ n, c, role: "" });
-    for (const n of c.motor) if (norm(n).includes(q)) hits.push({ n, c, role: "Equipo motor" });
-  }
-  if (!hits.length) return `<p class="empty">${q ? "No encontramos a nadie con ese nombre." : (S.cuad.length ? "Todavía no hay alumnos registrados. El administrador los agrega en cada cuadrilla, en la pestaña Personas." : "Todavía no hay cuadrillas. El administrador las crea desde Inicio y agrega a las personas en la pestaña Personas de cada una.")}</p>`;
-  hits.sort((a, b) => a.n.localeCompare(b.n, "es"));
-  return hits.slice(0, 150).map(h => `<div class="res"><strong>${esc(h.n)}</strong>${h.role ? `<span class="tag">${h.role}</span>` : ""}<p class="where">se encuentra en <a href="#/c/${h.c.id}/personas">${esc(h.c.name)}</a>${h.c.address ? `<br>${esc(h.c.address)}` : ""}${h.c.lead ? `<br>a cargo de ${esc(h.c.lead)}` : ""}</p></div>`).join("");
+function personasResults() {
+  const q = norm(S.q.personas);
+  const list = S.personas.filter(p => !q || norm(p.name).includes(q)).sort((a, b) => a.name.localeCompare(b.name, "es")).slice(0, 200);
+  if (!list.length) return `<p class="empty">${q ? "No encontramos a nadie con ese nombre." : isAdmin() ? "Todavía no hay personas. Agrega a la primera arriba." : "Todavía no hay personas. El administrador las agrega en esta sección."}</p>`;
+  return list.map(p => {
+    const c = p.cuadrilla && cuad(p.cuadrilla);
+    const donde = c ? `se encuentra en <a href="#/c/${c.id}/personas">${esc(c.name)}</a>${c.address ? `<br>${esc(c.address)}` : ""}${c.lead ? `<br>a cargo de ${esc(c.lead)}` : ""}` : "Sin cuadrilla asignada";
+    const adm = isAdmin() ? `<div class="adm"><label class="aq">Cuadrilla<select data-passign="${p.id}" aria-label="Cuadrilla de ${esc(p.name)}"><option value="">Sin cuadrilla</option>${S.cuad.map(x => `<option value="${x.id}"${x.id === p.cuadrilla ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label><button class="linkbtn" data-act="pdel" data-p="${p.id}">Eliminar</button></div>` : "";
+    return `<div class="res"><strong>${esc(p.name)}</strong><span class="tag">${ROLE_LABEL_P[p.role]}</span><p class="where">${donde}</p>${adm}</div>`;
+  }).join("");
 }
-const alumnos = () => `<input class="search" type="search" data-q="alumnos" placeholder="Buscar alumno por nombre" aria-label="Buscar alumno por nombre" value="${esc(S.q.alumnos)}"><div id="results" aria-live="polite">${alumnosResults()}</div>`;
+const personaAdd = () => `<form class="catadd" id="padd">
+  <h2 class="h-sec" style="margin-top:0">Agregar persona</h2>
+  <fieldset class="seg"><legend>¿Qué es?</legend>
+    <label><input type="radio" name="role" value="motor" required>Equipo motor</label>
+    <label><input type="radio" name="role" value="alumno">Alumno</label></fieldset>
+  <div class="padd-row"><input name="name" placeholder="Nombre y apellido" required maxlength="60" aria-label="Nombre" autocomplete="off">
+    <select name="cuadrilla" aria-label="Cuadrilla"><option value="">Sin cuadrilla por ahora</option>${S.cuad.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
+    <button class="btn" type="submit">Agregar</button></div>
+  <p class="hint" id="phint" role="status">Puedes asignarla a una cuadrilla más adelante.</p></form>`;
+const personas = () => `<h1 class="h-sec big">Personas</h1>
+  <p class="mute">Equipo motor y alumnos.${isAdmin() ? " Agrégalos aquí aunque todavía no exista su cuadrilla y asígnalos cuando quieras." : " Solo el administrador puede agregar o cambiar personas."}</p>
+  ${isAdmin() ? personaAdd() : ""}
+  <input class="search" type="search" data-q="personas" placeholder="Buscar por nombre" aria-label="Buscar persona por nombre" value="${esc(S.q.personas)}"><div id="results" aria-live="polite">${personasResults()}</div>`;
 
 /* Bodega central: todo el inventario. Solo el administrador lo cambia. */
 function inventarioResults() {
@@ -594,13 +619,14 @@ function render() {
   const h = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   const page = h[0] || "";
   if (page === "avisos") { location.replace("#/compras"); return; }
+  if (page === "alumnos") { location.replace("#/personas"); return; }
   document.querySelectorAll("[data-nav]").forEach(a => { if (a.dataset.nav === page) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (!S.ready) return;
   let html, title = "Construcción Misiones";
   if (page === "c") { html = detail(h[1], h[2] === "personas" ? "personas" : "materiales"); title = (cuad(h[1])?.name || "Cuadrilla") + " · " + title; }
   else if (page === "parroquia") { html = parroquia(); title = "Parroquia · " + title; }
   else if (page === "compras") { html = compras(); title = "Lista de compra · " + title; }
-  else if (page === "alumnos") { html = alumnos(); title = "Alumnos · " + title; }
+  else if (page === "personas") { html = personas(); title = "Personas · " + title; }
   else if (page === "inventario") { html = h[1] ? itemView(h[1]) : inventario(); title = "Bodega central · " + title; }
   else html = home();
   view.innerHTML = html;
@@ -659,7 +685,7 @@ function confirmDelete(name) {
 }
 
 /* ---------- Quién eres (equipo motor) ---------- */
-const equipo = () => S.cuad.flatMap(c => c.motor.map(name => ({ cuadrilla: c, name })));
+const equipo = () => S.personas.filter(p => p.role === "motor" && p.cuadrilla && cuad(p.cuadrilla)).map(p => ({ persona: p.id, name: p.name, cuadrilla: cuad(p.cuadrilla) }));
 function updateWho() {
   $("#yo-wrap").hidden = !(S.role === "usuario" && S.yo);
   $("#yo-label").textContent = S.yo ? S.yo.name : "";
@@ -669,13 +695,13 @@ function openWho(forced) {
   if (d.open) return;
   d.dataset.forced = forced && list.length ? "1" : "";
   if (!list.length) {
-    $("#ymsg").textContent = "Todavía no hay personas en el equipo motor. Pídele al administrador que te agregue y vuelve a entrar.";
+    $("#ymsg").textContent = "Todavía no hay equipo motor con cuadrilla asignada. Pídele al administrador que te agregue y te asigne a una cuadrilla, y vuelve a entrar.";
     $("#ylabel").hidden = true; $("#ygo").hidden = true; $("#ycancel").textContent = "Cerrar";
   } else {
     $("#ymsg").textContent = "Elige tu nombre de la lista del equipo motor. Con eso se firman tus pedidos y no tendrás que escribirlo cada vez.";
     $("#ylabel").hidden = false; $("#ygo").hidden = false; $("#ycancel").textContent = "Ahora no";
     $("#ycancel").hidden = !!d.dataset.forced;
-    sel.innerHTML = S.cuad.filter(c => c.motor.length).map(c => `<optgroup label="${esc(c.name)}">${c.motor.map(n => `<option value="${list.findIndex(x => x.cuadrilla === c && x.name === n)}"${S.yo && S.yo.name === n && S.yo.cuadrilla.id === c.id ? " selected" : ""}>${esc(n)}</option>`).join("")}</optgroup>`).join("");
+    sel.innerHTML = S.cuad.map(c => { const g = list.map((x, n) => ({ x, n })).filter(o => o.x.cuadrilla === c); return g.length ? `<optgroup label="${esc(c.name)}">${g.map(o => `<option value="${o.n}"${S.yo && S.yo.persona === o.x.persona ? " selected" : ""}>${esc(o.x.name)}</option>`).join("")}</optgroup>` : ""; }).join("");
   }
   d.showModal();
 }
@@ -685,7 +711,7 @@ $("#yform").addEventListener("submit", async e => {
   e.preventDefault();
   const pick = equipo()[+e.target.elements.who.value];
   if (!pick) return;
-  const r = await call("POST", "/api/yo", { cuadrilla: pick.cuadrilla.id, name: pick.name });
+  const r = await call("POST", "/api/yo", { persona: pick.persona });
   if (r.ok) { S.yo = r.data; $("#ydlg").close(); updateWho(); render(); toast(`Hola, ${pick.name}.`); }
 });
 $("#yo-change").addEventListener("click", () => openWho(false));
@@ -793,6 +819,14 @@ document.addEventListener("click", async e => {
     if (r.ok) { S.cat = S.cat.filter(x => x.id !== it.id); location.hash = "#/inventario"; render(); } else load(true);
     return;
   }
+  if (act === "unassign" || act === "pdel") {
+    const pe = S.personas.find(x => x.id == b.dataset.p); if (!pe) return;
+    if (act === "pdel" && !confirm(`¿Eliminar a ${pe.name}? Se borra de la lista de personas.`)) return;
+    const r = act === "pdel" ? await call("DELETE", "/api/personas/" + pe.id) : await call("PUT", "/api/personas/" + pe.id, { cuadrilla: null });
+    await load(true);
+    if (r.ok) toast(act === "pdel" ? `${pe.name} se eliminó.` : `${pe.name} quedó sin cuadrilla.`);
+    return;
+  }
   if (!c) return;
   if (act === "rmc") {
     if (!confirm(`¿Eliminar ${c.name}? Lo que tiene asignado vuelve a la parroquia.`)) return;
@@ -807,7 +841,7 @@ document.addEventListener("click", async e => {
       if (+b.dataset.d > 0 && avail(cat) < 1) return toast(`No quedan “${cat.name}” en la parroquia.`);
       it.q = Math.max(0, it.q + +b.dataset.d);
     }
-  } else if (act === "del") c[k].splice(+b.dataset.i, 1);
+  } else return;
   save(c); render();
 });
 
@@ -828,6 +862,30 @@ document.addEventListener("submit", async e => {
     if (r.ok) { await load(true); toast(info.text ? "Solicitud enviada. " + info.text : "Solicitud enviada."); } // recarga: la primera solicitud crea la etapa en el servidor
     return;
   }
+  if (f.id === "padd") {
+    const name = d.get("name").trim(), hint = $("#phint");
+    if (!d.get("role")) { hint.textContent = "Elige si es equipo motor o alumno."; return; }
+    const ex = S.personas.find(x => norm(x.name) === norm(name));
+    if (ex) { hint.textContent = `Ya existe “${ex.name}”. Si son personas distintas, escribe también el segundo apellido.`; return; }
+    const r = await call("POST", "/api/personas", { name, role: d.get("role"), cuadrilla: d.get("cuadrilla") || null });
+    if (r.ok) { await load(true); toast(`${r.data.name} se agregó${r.data.cuadrilla ? " a " + (cuad(r.data.cuadrilla)?.name || "la cuadrilla") : " (sin cuadrilla)"}.`); refocus("#padd input[name=name]"); }
+    return;
+  }
+  if (f.dataset.addp) {
+    const role = f.dataset.addp, c = cuad(f.dataset.id), hint = f.querySelector(".hint"), name = (d.get("n") || "").trim();
+    if (!c || !name) return;
+    const ex = S.personas.find(x => norm(x.name) === norm(name));
+    let r;
+    if (ex) {
+      const dondeEsta = ex.cuadrilla && cuad(ex.cuadrilla);
+      if (ex.role !== role) { hint.textContent = `“${ex.name}” ya existe como ${ex.role === "motor" ? "equipo motor" : "alumno"}.`; return; }
+      if (ex.cuadrilla === c.id) { hint.textContent = `${ex.name} ya está en esta cuadrilla.`; return; }
+      if (dondeEsta) { hint.textContent = `${ex.name} ya está en ${dondeEsta.name}. Primero hay que quitar a esa persona de allí.`; return; }
+      r = await call("PUT", "/api/personas/" + ex.id, { cuadrilla: c.id }); // estaba sin cuadrilla: se asigna
+    } else r = await call("POST", "/api/personas", { name, role, cuadrilla: c.id });
+    if (r.ok) { await load(true); refocus(`form[data-addp="${role}"] input[name=n]`); }
+    return;
+  }
   if (f.id === "catadd") {
     const name = d.get("name").trim(), kind = d.get("kind"), hint = $("#cathint");
     const dup = S.cat.find(x => Names.same(x.name, name));
@@ -839,10 +897,6 @@ document.addEventListener("submit", async e => {
   }
   const c = cuad(f.dataset.id), k = f.dataset.add;
   if (!c) return;
-  if (k === "motor" || k === "alumnos") {
-    const n = (d.get("n") || "").trim(); if (!n) return;
-    c[k].push(n); save(c); render(); refocus(`form[data-add="${k}"] input[name=n]`); return;
-  }
   // materials / tools: solo de la bodega, del tipo correcto y con saldo
   const hint = f.querySelector(".hint"), typed = (d.get("n") || "").trim();
   let it = item(d.get("i"));
@@ -863,6 +917,13 @@ document.addEventListener("submit", async e => {
 
 document.addEventListener("change", async e => {
   const t = e.target;
+  if (t.dataset.passign) { // el administrador asigna (o quita) la cuadrilla de una persona
+    const pe = S.personas.find(x => x.id == t.dataset.passign); if (!pe) return;
+    const r = await call("PUT", "/api/personas/" + pe.id, { cuadrilla: t.value || null });
+    await load(true);
+    if (r.ok) toast(t.value ? `${pe.name} quedó en ${cuad(+t.value)?.name}.` : `${pe.name} quedó sin cuadrilla.`);
+    return;
+  }
   if (t.dataset.cf) { // cambios de la bodega central (solo administrador)
     const it = item(t.dataset.cid); if (!it) return;
     const f = t.dataset.cf, v = f === "total" ? Math.max(0, Math.floor(+t.value || 0)) : t.value.trim();
@@ -881,7 +942,7 @@ document.addEventListener("input", e => {
   const t = e.target;
   if (t.dataset.q) {
     S.q[t.dataset.q] = t.value;
-    $("#results").innerHTML = t.dataset.q === "alumnos" ? alumnosResults() : inventarioResults();
+    $("#results").innerHTML = t.dataset.q === "personas" ? personasResults() : inventarioResults();
   } else if (t.name === "n" && t.form?.classList.contains("pick")) {
     const f = t.form; f.elements.i.value = ""; f.classList.remove("chosen"); f.querySelector(".hint").textContent = "";
     suggest(f);

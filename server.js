@@ -87,17 +87,24 @@ const cookie = (req, name, value, maxAge) =>
   (req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "");
 const setCookie = (req, value, maxAge) => cookie(req, "acceso", value, maxAge);
 
-// Quién es la persona que usa la app: alguien del equipo motor de una cuadrilla, elegido la primera vez que entra.
+// Quién es la persona que usa la app: alguien del equipo motor (con cuadrilla asignada), elegido la primera vez que entra.
 // No es una credencial (la contraseña es compartida): sirve para firmar automáticamente sus pedidos.
-// Se vuelve a comprobar contra los datos en cada uso: si la sacan del equipo motor, deja de valer.
-function whoAmI(req, cuadrillas) {
-  const raw = cookieOf(req, "yo"), i = raw.indexOf(".");
-  if (i < 1) return null;
-  let name;
-  try { name = decodeURIComponent(raw.slice(i + 1)); } catch { return null; }
-  const cu = cuadrillas.find((c) => String(c.id) === raw.slice(0, i) && c.motor.includes(name));
-  return cu ? { name, cuadrilla: { id: cu.id, name: cu.name } } : null;
+// Se vuelve a comprobar contra los datos en cada uso: si la sacan del equipo motor o de su cuadrilla, deja de valer.
+function whoAmI(req, personas, cuadrillas) {
+  const id = Number(cookieOf(req, "yo"));
+  const p = id && personas.find((x) => x.id === id && x.role === "motor" && x.cuadrilla);
+  const cu = p && cuadrillas.find((c) => c.id === p.cuadrilla);
+  return cu ? { persona: p.id, name: p.name, cuadrilla: { id: cu.id, name: cu.name } } : null;
 }
+
+// Las personas viven en su propia lista (pueden existir sin cuadrilla y asignarse después).
+// Cada cuadrilla se entrega con los nombres de su equipo motor y de sus alumnos ya calculados.
+const withPeople = (cuadrillas, personas) =>
+  cuadrillas.map((c) => ({
+    ...c,
+    motor: personas.filter((p) => p.cuadrilla === c.id && p.role === "motor").map((p) => p.name),
+    alumnos: personas.filter((p) => p.cuadrilla === c.id && p.role === "alumno").map((p) => p.name),
+  }));
 
 const failures = new Map(); // ip -> { n, until }
 const ipOf = (req) => (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
@@ -189,10 +196,9 @@ function cleanCuadrilla(id, b, catalog, others) {
   if (!isObj(b) || String(b.id) !== String(id)) throw new HttpError(400, "Cuadrilla inválida");
   const name = clip(b.name, 60);
   if (!name) throw new HttpError(400, "La cuadrilla necesita un nombre");
-  const people = (a) => (Array.isArray(a) ? a : []).map((n) => clip(n, 60)).filter(Boolean).slice(0, 300);
   const out = {
     id: Number(id), name, address: clip(b.address, 120), lead: clip(b.lead, 60),
-    motor: people(b.motor), alumnos: people(b.alumnos), materials: [], tools: [],
+    motor: [], alumnos: [], materials: [], tools: [], // las personas se administran en /api/personas
   };
   for (const list of ["materials", "tools"]) {
     const sum = new Map();
@@ -229,18 +235,77 @@ async function handleApi(req, res, url, role) {
   const m = req.method;
   const canEdit = role === "admin" || role === "usuario";
   const need = (ok) => { if (!ok) throw new HttpError(403, "Tu rol no permite hacer cambios."); };
+  let mm;
 
   if (url === "/api/me" && m === "GET")
-    return send(res, 200, { role, open: OPEN, yo: whoAmI(req, await allData(pool, "cuadrillas")) });
+    return send(res, 200, { role, open: OPEN, yo: whoAmI(req, await allData(pool, "personas"), await allData(pool, "cuadrillas")) });
 
   if (url === "/api/yo" && m === "POST") {
     need(canEdit);
+    const b = await readBody(req);
+    const yo = whoAmI({ headers: { cookie: `yo=${Number(b.persona) || 0}` } }, await allData(pool, "personas"), await allData(pool, "cuadrillas"));
+    if (!yo) throw new HttpError(400, "Elige tu nombre de la lista del equipo motor con cuadrilla asignada.");
+    res.setHeader("Set-Cookie", cookie(req, "yo", String(yo.persona), 60 * 60 * 24 * 365));
+    return send(res, 200, yo);
+  }
+
+  // ---- Personas: equipo motor y alumnos. Las administra solo el administrador.
+  const dupPersona = (personas, name, exceptId) =>
+    personas.find((x) => x.id !== exceptId && Names.clean(x.name).join(" ") === Names.clean(name).join(" "));
+  const cleanRole = (r) => { if (!["motor", "alumno"].includes(r)) throw new HttpError(400, "Elige si es alumno o equipo motor."); return r; };
+
+  if (url === "/api/personas" && m === "GET") return send(res, 200, await allData(pool, "personas"));
+
+  if (url === "/api/personas" && m === "POST") {
+    need(role === "admin");
     const b = await readBody(req), name = clip(b.name, 60);
-    const cuadrillas = await allData(pool, "cuadrillas");
-    const cu = cuadrillas.find((c) => c.id === Number(b.cuadrilla) && c.motor.includes(name));
-    if (!cu) throw new HttpError(400, "Elige tu nombre de la lista del equipo motor.");
-    res.setHeader("Set-Cookie", cookie(req, "yo", `${cu.id}.${encodeURIComponent(name)}`, 60 * 60 * 24 * 365));
-    return send(res, 200, { name, cuadrilla: { id: cu.id, name: cu.name } });
+    if (!Names.clean(name).length) throw new HttpError(400, "Falta el nombre.");
+    const rol = cleanRole(b.role);
+    return send(res, 200, await tx(async (c) => {
+      const personas = await allData(c, "personas"), cuadrillas = await allData(c, "cuadrillas");
+      const dup = dupPersona(personas, name);
+      if (dup) throw new HttpError(409, `Ya existe “${dup.name}”. Si son personas distintas, escribe también el segundo apellido.`);
+      let cuadrilla = null;
+      if (b.cuadrilla !== undefined && b.cuadrilla !== null && b.cuadrilla !== "") {
+        cuadrilla = Number(b.cuadrilla);
+        if (!cuadrillas.some((x) => x.id === cuadrilla)) throw new HttpError(400, "Esa cuadrilla no existe.");
+      }
+      const p = { id: Date.now(), name, role: rol, cuadrilla };
+      await c.query("INSERT INTO personas (id, data) VALUES ($1, $2)", [p.id, p]);
+      return p;
+    }));
+  }
+
+  mm = url.match(/^\/api\/personas\/(\d+)$/);
+  if (mm) {
+    need(role === "admin");
+    const id = Number(mm[1]);
+    if (m === "PUT") {
+      const b = await readBody(req);
+      return send(res, 200, await tx(async (c) => {
+        const personas = await allData(c, "personas"), cuadrillas = await allData(c, "cuadrillas");
+        const p = personas.find((x) => x.id === id);
+        if (!p) throw new HttpError(404, "Esa persona ya no existe.");
+        const next = { ...p };
+        if (b.name !== undefined) {
+          next.name = clip(b.name, 60);
+          if (!Names.clean(next.name).length) throw new HttpError(400, "Falta el nombre.");
+          const dup = dupPersona(personas, next.name, id);
+          if (dup) throw new HttpError(409, `Ya existe “${dup.name}”.`);
+        }
+        if (b.role !== undefined) next.role = cleanRole(b.role);
+        if (b.cuadrilla !== undefined) { // null = sin cuadrilla
+          next.cuadrilla = b.cuadrilla === null || b.cuadrilla === "" ? null : Number(b.cuadrilla);
+          if (next.cuadrilla !== null && !cuadrillas.some((x) => x.id === next.cuadrilla)) throw new HttpError(400, "Esa cuadrilla no existe.");
+        }
+        await c.query("UPDATE personas SET data = $2 WHERE id = $1", [id, next]);
+        return next;
+      }));
+    }
+    if (m === "DELETE") {
+      await pool.query("DELETE FROM personas WHERE id = $1", [id]);
+      return send(res, 200, { ok: true });
+    }
   }
 
   // ---- Bodega central: catálogo de materiales y herramientas con su cantidad total
@@ -266,7 +331,7 @@ async function handleApi(req, res, url, role) {
     }));
   }
 
-  let mm = url.match(/^\/api\/catalog\/(\d+)$/);
+  mm = url.match(/^\/api\/catalog\/(\d+)$/);
   if (mm) {
     need(role === "admin");
     const id = Number(mm[1]);
@@ -309,7 +374,7 @@ async function handleApi(req, res, url, role) {
 
   // ---- Cuadrillas
   if (url === "/api/cuadrillas" && m === "GET")
-    return send(res, 200, await allData(pool, "cuadrillas"));
+    return send(res, 200, withPeople(await allData(pool, "cuadrillas"), await allData(pool, "personas")));
 
   mm = url.match(/^\/api\/cuadrillas\/(\d+)$/);
   if (mm) {
@@ -320,20 +385,18 @@ async function handleApi(req, res, url, role) {
       return send(res, 200, await tx(async (c) => {
         const cuadrillas = await allData(c, "cuadrillas");
         const data = cleanCuadrilla(id, b, await allData(c, "catalog"), cuadrillas.filter((x) => String(x.id) !== id));
-        if (role !== "admin") { // las personas las administra solo el administrador: se conservan las que ya había
-          const before = cuadrillas.find((x) => String(x.id) === id);
-          data.motor = before ? before.motor : [];
-          data.alumnos = before ? before.alumnos : [];
-        }
         await c.query(
           `INSERT INTO cuadrillas (id, data, updated_at) VALUES ($1, $2, now())
            ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = now()`, [id, data]);
-        return data;
+        return withPeople([data], await allData(c, "personas"))[0];
       }));
     }
     if (m === "DELETE") {
-      await pool.query("DELETE FROM cuadrillas WHERE id = $1", [id]); // lo asignado vuelve solo a la parroquia
-      return send(res, 200, { ok: true });
+      return send(res, 200, await tx(async (c) => {
+        await c.query("DELETE FROM cuadrillas WHERE id = $1", [id]); // lo asignado vuelve solo a la parroquia
+        await c.query(`UPDATE personas SET data = jsonb_set(data, '{cuadrilla}', 'null'::jsonb) WHERE data->>'cuadrilla' = $1`, [id]); // sus personas quedan sin cuadrilla
+        return { ok: true };
+      }));
     }
   }
 
@@ -356,7 +419,7 @@ async function handleApi(req, res, url, role) {
     if (!Names.clean(name).length || q < 1) throw new HttpError(400, "Faltan lo que necesitas o la cantidad.");
     return send(res, 200, await tx(async (c) => {
       const cuadrillas = await allData(c, "cuadrillas");
-      const yo = whoAmI(req, cuadrillas);
+      const yo = whoAmI(req, await allData(c, "personas"), cuadrillas);
       if (!yo && role !== "admin") throw new HttpError(403, "Primero elige tu nombre de la lista del equipo motor.");
       // Sin identidad (solo el administrador): firma como Administrador y elige la cuadrilla.
       const cu = yo ? cuadrillas.find((x) => x.id === yo.cuadrilla.id) : cuadrillas.find((x) => x.id === Number(b.cuadrilla));
@@ -548,6 +611,25 @@ async function migrate(c) {
   await c.query("INSERT INTO meta (key) VALUES ('bodega_v2')");
 }
 
+// Antes cada cuadrilla guardaba sus nombres de equipo motor y alumnos; ahora son personas con cuadrilla asignada (o sin ella).
+async function migratePersonas(c) {
+  if ((await c.query("SELECT 1 FROM meta WHERE key = 'personas_v3'")).rowCount) return;
+  let id = Date.now();
+  for (const row of await allData(c, "cuadrillas")) {
+    for (const [list, role] of [["motor", "motor"], ["alumnos", "alumno"]]) {
+      for (const n of row[list] || []) {
+        const name = clip(n, 60);
+        if (!name) continue;
+        const p = { id: id++, name, role, cuadrilla: row.id };
+        await c.query("INSERT INTO personas (id, data) VALUES ($1, $2)", [p.id, p]);
+      }
+      row[list] = [];
+    }
+    await c.query("UPDATE cuadrillas SET data = $2 WHERE id = $1", [row.id, row]);
+  }
+  await c.query("INSERT INTO meta (key) VALUES ('personas_v3')");
+}
+
 async function start() {
   await pool.query(`CREATE TABLE IF NOT EXISTS cuadrillas (
     id BIGINT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
@@ -555,8 +637,10 @@ async function start() {
   await pool.query(`CREATE TABLE IF NOT EXISTS etapas (id BIGINT PRIMARY KEY, data JSONB NOT NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS solicitudes (id BIGINT PRIMARY KEY, data JSONB NOT NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS catalog (id BIGINT PRIMARY KEY, data JSONB NOT NULL)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS personas (id BIGINT PRIMARY KEY, data JSONB NOT NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY)`);
   await tx(migrate);
+  await tx(migratePersonas);
   return http
     .createServer((req, res) =>
       handle(req, res).catch((e) => {

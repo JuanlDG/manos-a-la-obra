@@ -47,10 +47,11 @@ Los datos se comparten entre todos los usuarios (tablas `catalog`, `cuadrillas` 
 - Cada persona puede anular sus propias solicitudes mientras estén pendientes (se reconoce por el navegador).
 - Al marcar como comprado, la cantidad aprobada se suma sola a la bodega central. Si el elemento todavía no existe, la app pregunta si es material o herramienta. Deshacer resta lo mismo (no si las cuadrillas ya lo tienen asignado). Si la unidad pedida no coincide con la de la bodega, no suma y hay que ajustarlo a mano en Inventario.
 
-## Quién es cada persona
+## Personas y quién es cada una
 
-- Las personas (equipo motor y alumnos) solo las agrega o quita el administrador.
-- La primera vez que entra un usuario, elige su nombre de la lista del equipo motor. Desde entonces sus pedidos se firman solos con su nombre y su cuadrilla; puede cambiarlo con “Cambiar” en la barra superior. Si el administrador lo saca del equipo motor, vuelve a pedírsele.
+- Equipo motor y alumnos son **personas** y viven en su propia lista. El administrador las agrega desde la sección **Personas** aunque todavía no exista ninguna cuadrilla, y las **asigna después** (desde esa misma lista o desde la pestaña Personas de cada cuadrilla). Quitar a alguien de una cuadrilla no la borra: queda sin cuadrilla. Si se elimina una cuadrilla, sus personas quedan sin cuadrilla.
+- No puede haber dos personas con el mismo nombre (sin importar tildes ni mayúsculas): si son distintas, se escribe también el segundo apellido.
+- La primera vez que entra un usuario, elige su nombre entre el equipo motor **que ya tiene cuadrilla**. Desde entonces sus pedidos se firman solos con su nombre y su cuadrilla; puede cambiarlo con “Cambiar” en la barra superior. Si el administrador lo saca del equipo motor o de su cuadrilla, vuelve a pedírsele.
 - El administrador, si no eligió identidad, firma como “Administrador” y elige la cuadrilla al pedir.
 - Eliminar un elemento de la bodega pide doble confirmación: primero “¿seguro?” y luego escribir su nombre. El servidor también exige el nombre.
-- En la vista Parroquia, quien ya eligió su nombre del equipo motor ve un botón + verde a la derecha de cada elemento: añade una unidad a su cuadrilla y muestra a pantalla completa, unos dos segundos, “… se ha añadido correctamente a la …”. El servidor sigue verificando que haya saldo.
+- En la vista Parroquia, quien ya eligió su nombre ve un botón + verde a la derecha de cada elemento: añade una unidad a su cuadrilla y muestra a pantalla completa, unos dos segundos, “… se ha añadido correctamente a la …”. El servidor sigue verificando que haya saldo.
