@@ -14,7 +14,7 @@ Abrir http://localhost:3000. La tabla `jobs` se crea sola al iniciar.
 
 1. New Project → Deploy from GitHub repo → este repositorio.
 2. En el proyecto: New → Database → Add PostgreSQL.
-3. En el servicio de la app → Variables → New Variable → `DATABASE_URL` con valor `${{Postgres.DATABASE_URL}}`.
+3. En el servicio de la app → Variables → `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` y `APP_PASSWORD` = la contraseña compartida del equipo.
 4. Settings → Networking → Generate Domain.
 
-Los datos se comparten entre todos los usuarios (tablas `cuadrillas` y `avisos`; la cuadrilla con id 1 es la bodega de la parroquia y se crea sola). No hay login: cualquiera con la URL puede editar.
+Los datos se comparten entre todos los usuarios (tablas `cuadrillas` y `avisos`; la cuadrilla con id 1 es la bodega de la parroquia y se crea sola). Con `APP_PASSWORD` definida, la app pide esa contraseña (una sola, compartida; la sesión dura 30 días). Si no se define, queda abierta a cualquiera con la URL.
