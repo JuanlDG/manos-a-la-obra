@@ -1,6 +1,6 @@
 # Manos a la Obra
 
-Gestión de cuadrillas de misiones: materiales, herramientas, personas y avisos, con inventario y búsqueda de alumnos.
+Gestión de cuadrillas de misiones: materiales, herramientas, personas y lista de compra, con inventario y búsqueda de alumnos.
 
 ## Ejecutar localmente
 
@@ -25,7 +25,7 @@ Abrir http://localhost:3000. La tabla `jobs` se crea sola al iniciar.
 | Rol | Cómo entra | Qué puede hacer |
 |---|---|---|
 | Administrador | `ADMIN_PASSWORD` | Todo, incluido cambiar la bodega central (inventario). |
-| Usuario | `APP_PASSWORD` | Editar cuadrillas, personas y avisos, usando solo lo que ya está en la bodega. |
+| Usuario | `APP_PASSWORD` | Editar cuadrillas y personas (usando solo lo que ya está en la bodega) y pedir compras. |
 | Solo lectura | “Entrar sin contraseña” | Ver todo, no cambiar nada. |
 
 Sin `ADMIN_PASSWORD` nadie puede cambiar la bodega. Si no se define ninguna contraseña (por ejemplo en local), la app queda abierta y todos son administradores.
@@ -38,3 +38,11 @@ Sin `ADMIN_PASSWORD` nadie puede cambiar la bodega. Si no se define ninguna cont
 - Un elemento es o material o herramienta, nunca los dos. Singular y plural son el mismo elemento (taladro / taladros, pincel / pinceles).
 
 Los datos se comparten entre todos los usuarios (tablas `catalog`, `cuadrillas` y `avisos`). Al iniciar, el servidor convierte automáticamente los datos de la versión anterior (materiales escritos a mano) a este formato.
+
+## Lista de compra
+
+- Cualquier usuario pide algo indicando su nombre, su cuadrilla, qué necesita y cuánto. Al escribir (y al enviar) la app avisa si ya hay disponible en la parroquia, o quién lo tiene.
+- El administrador aprueba (puede aprobar una cantidad menor) o rechaza con motivo, y cierra la etapa. Lo aprobado queda como lista de compra de esa etapa, agrupada por elemento; las pendientes pasan a la etapa siguiente.
+- Después, el administrador marca como comprado cada línea o toda la etapa. Las etapas cerradas quedan como registro.
+- Cada persona puede anular sus propias solicitudes mientras estén pendientes (se reconoce por el navegador).
+- Marcar algo como comprado no modifica la bodega central: el administrador lo ingresa en Inventario.

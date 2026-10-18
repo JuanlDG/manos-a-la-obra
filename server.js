@@ -15,7 +15,7 @@ const STATIC = {
 
 // ---- Roles
 //   admin:    ADMIN_PASSWORD. Puede cambiar la bodega central (inventario) y todo lo demás.
-//   usuario:  APP_PASSWORD.   Puede editar cuadrillas y avisos, usando solo lo que hay en la bodega.
+//   usuario:  APP_PASSWORD.   Puede editar cuadrillas y pedir compras, usando solo lo que hay en la bodega.
 //   visitante: sin contraseña. Solo lectura.
 // Si no hay ninguna contraseña definida la app queda abierta y todos son admin (útil en local).
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
@@ -201,6 +201,17 @@ function cleanCuadrilla(id, b, catalog, others) {
   return out;
 }
 
+// La etapa que está recibiendo solicitudes (se crea sola si no hay ninguna).
+async function openStage(c) {
+  const etapas = await allData(c, "etapas");
+  let e = etapas.find((x) => x.state === "abierta");
+  if (!e) {
+    e = { id: Date.now(), name: `Etapa ${etapas.length + 1}`, state: "abierta", createdAt: new Date().toISOString() };
+    await c.query("INSERT INTO etapas (id, data) VALUES ($1, $2)", [e.id, e]);
+  }
+  return e;
+}
+
 async function handleApi(req, res, url, role) {
   const m = req.method;
   const canEdit = role === "admin" || role === "usuario";
@@ -294,23 +305,116 @@ async function handleApi(req, res, url, role) {
     }
   }
 
-  // ---- Avisos
-  if (url === "/api/avisos" && m === "GET")
-    return send(res, 200, (await pool.query("SELECT data FROM avisos ORDER BY id DESC LIMIT 200")).rows.map((r) => r.data));
-  if (url === "/api/avisos" && m === "POST") {
+  // ---- Lista de compra: solicitudes agrupadas por etapas.
+  //   Una etapa abierta recibe solicitudes; el administrador aprueba o rechaza (con la cantidad aprobada)
+  //   y la cierra. Lo aprobado queda como lista de compra de esa etapa y después se marca como comprado.
+  const cid = clip(req.headers["x-cid"], 64); // identifica el navegador de quien pidió, para que pueda anular lo suyo
+  const pub = ({ cid: owner, ...x }) => ({ ...x, mine: !!cid && owner === cid });
+
+  if (url === "/api/compras" && m === "GET")
+    return send(res, 200, {
+      etapas: await allData(pool, "etapas"),
+      solicitudes: (await allData(pool, "solicitudes")).map(pub),
+    });
+
+  if (url === "/api/solicitudes" && m === "POST") {
     need(canEdit);
     const b = await readBody(req);
-    const author = clip(b.author, 60), text = clip(b.text, 1000);
-    if (!author || !text) throw new HttpError(400, "Faltan el nombre o el mensaje");
-    const aviso = { id: Date.now(), author, text, ts: new Date().toISOString() };
-    await pool.query("INSERT INTO avisos (id, data) VALUES ($1, $2)", [aviso.id, aviso]);
-    return send(res, 200, aviso);
+    const author = clip(b.author, 60), name = clip(b.name, 80), unit = clip(b.unit, 12), q = int(b.q, 1e6);
+    if (!author || !Names.clean(name).length || q < 1)
+      throw new HttpError(400, "Faltan tu nombre, lo que necesitas o la cantidad.");
+    return send(res, 200, await tx(async (c) => {
+      const cu = (await allData(c, "cuadrillas")).find((x) => x.id === Number(b.cuadrilla));
+      if (!cu) throw new HttpError(400, "Elige tu cuadrilla.");
+      const known = (await allData(c, "catalog")).find((e) => Names.same(e.name, name));
+      const etapa = await openStage(c);
+      const sol = {
+        id: Date.now(), etapa: etapa.id, author, cuadrilla: { id: cu.id, name: cu.name },
+        name: known ? known.name : name, unit: unit || (known ? known.unit : ""), q,
+        itemId: known ? known.id : null, status: "pendiente", approvedQ: null, note: "",
+        bought: false, ts: new Date().toISOString(), cid,
+      };
+      await c.query("INSERT INTO solicitudes (id, data) VALUES ($1, $2)", [sol.id, sol]);
+      return pub(sol);
+    }));
   }
-  mm = url.match(/^\/api\/avisos\/(\d+)$/);
+
+  if (url === "/api/solicitudes/comprado" && m === "POST") {
+    need(role === "admin");
+    const b = await readBody(req);
+    const ids = (Array.isArray(b.ids) ? b.ids : []).map(Number);
+    return send(res, 200, await tx(async (c) => {
+      const etapas = await allData(c, "etapas");
+      const out = [];
+      for (const id of ids) {
+        const sol = (await c.query("SELECT data FROM solicitudes WHERE id = $1", [id])).rows[0]?.data;
+        if (!sol) continue;
+        const e = etapas.find((x) => x.id === sol.etapa);
+        if (sol.status !== "aprobada" || e?.state !== "cerrada")
+          throw new HttpError(409, "Solo se marcan como compradas las solicitudes aprobadas de una etapa cerrada.");
+        const next = { ...sol, bought: !!b.bought, boughtAt: b.bought ? new Date().toISOString() : null };
+        await c.query("UPDATE solicitudes SET data = $2 WHERE id = $1", [id, next]);
+        out.push(pub(next));
+      }
+      return out;
+    }));
+  }
+
+  mm = url.match(/^\/api\/solicitudes\/(\d+)$/);
+  if (mm && m === "PUT") {
+    need(role === "admin");
+    const id = Number(mm[1]), b = await readBody(req);
+    return send(res, 200, await tx(async (c) => {
+      const sol = (await c.query("SELECT data FROM solicitudes WHERE id = $1", [id])).rows[0]?.data;
+      if (!sol) throw new HttpError(404, "Esa solicitud ya no existe.");
+      const e = (await allData(c, "etapas")).find((x) => x.id === sol.etapa);
+      if (e?.state !== "abierta") throw new HttpError(409, "La etapa está cerrada: ya no se puede aprobar ni rechazar.");
+      const next = { ...sol };
+      if (b.status !== undefined) {
+        if (!["pendiente", "aprobada", "rechazada"].includes(b.status)) throw new HttpError(400, "Estado inválido.");
+        next.status = b.status;
+      }
+      if (next.status === "aprobada") {
+        next.approvedQ = b.approvedQ !== undefined ? int(b.approvedQ, 1e6) : sol.approvedQ ?? sol.q;
+        if (next.approvedQ < 1) throw new HttpError(400, "La cantidad aprobada debe ser al menos 1.");
+      } else next.approvedQ = null;
+      next.note = next.status === "rechazada" && b.note !== undefined ? clip(b.note, 200) : next.status === "rechazada" ? sol.note : "";
+      await c.query("UPDATE solicitudes SET data = $2 WHERE id = $1", [id, next]);
+      return pub(next);
+    }));
+  }
   if (mm && m === "DELETE") {
     need(canEdit);
-    await pool.query("DELETE FROM avisos WHERE id = $1", [mm[1]]);
-    return send(res, 200, { ok: true });
+    const id = Number(mm[1]);
+    return send(res, 200, await tx(async (c) => {
+      const sol = (await c.query("SELECT data FROM solicitudes WHERE id = $1", [id])).rows[0]?.data;
+      if (!sol) return { ok: true };
+      const e = (await allData(c, "etapas")).find((x) => x.id === sol.etapa);
+      if (e?.state !== "abierta") throw new HttpError(409, "La etapa está cerrada: la solicitud queda como registro.");
+      const own = !!cid && sol.cid === cid && sol.status === "pendiente";
+      if (role !== "admin" && !own) throw new HttpError(403, "Solo puedes anular tus solicitudes pendientes.");
+      await c.query("DELETE FROM solicitudes WHERE id = $1", [id]);
+      return { ok: true };
+    }));
+  }
+
+  if (url === "/api/etapas/cerrar" && m === "POST") {
+    need(role === "admin");
+    return send(res, 200, await tx(async (c) => {
+      const etapa = await openStage(c);
+      const sols = (await allData(c, "solicitudes")).filter((x) => x.etapa === etapa.id);
+      const aprobadas = sols.filter((x) => x.status === "aprobada");
+      if (!aprobadas.length) throw new HttpError(409, "No hay solicitudes aprobadas: aprueba al menos una para cerrar la etapa.");
+      const closed = { ...etapa, state: "cerrada", closedAt: new Date().toISOString() };
+      await c.query("UPDATE etapas SET data = $2 WHERE id = $1", [etapa.id, closed]);
+      const next = await openStage(c); // la siguiente etapa; recibe las pendientes
+      for (const x of sols.filter((y) => y.status === "pendiente"))
+        await c.query("UPDATE solicitudes SET data = $2 WHERE id = $1", [x.id, { ...x, etapa: next.id }]);
+      return {
+        etapas: await allData(c, "etapas"),
+        solicitudes: (await allData(c, "solicitudes")).map(pub),
+      };
+    }));
   }
 
   throw new HttpError(404, "No encontrado");
@@ -380,7 +484,9 @@ async function migrate(c) {
 async function start() {
   await pool.query(`CREATE TABLE IF NOT EXISTS cuadrillas (
     id BIGINT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS avisos (id BIGINT PRIMARY KEY, data JSONB NOT NULL)`);
+  // La tabla "avisos" de versiones anteriores se deja como está (sin uso) para no perder datos.
+  await pool.query(`CREATE TABLE IF NOT EXISTS etapas (id BIGINT PRIMARY KEY, data JSONB NOT NULL)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS solicitudes (id BIGINT PRIMARY KEY, data JSONB NOT NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS catalog (id BIGINT PRIMARY KEY, data JSONB NOT NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY)`);
   await tx(migrate);

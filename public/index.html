@@ -29,8 +29,8 @@ button,input,textarea{font:inherit;color:inherit}
 /* Cabecera */
 .top{padding:22px 0 6px;text-align:center}
 .brand{font:800 clamp(2.2rem,9vw,3.4rem)/1 var(--display);letter-spacing:.01em;text-decoration:none;display:inline-block}
-.nav{display:flex;justify-content:center;gap:clamp(8px,4vw,28px);margin:14px 0 26px}
-.nav a{padding:8px 4px 6px;text-decoration:none;font-weight:700;border-bottom:4px solid transparent}
+.nav{display:flex;justify-content:center;gap:clamp(4px,2.5vw,28px);margin:14px 0 26px}
+.nav a{white-space:nowrap;padding:8px 4px 6px;text-decoration:none;font-weight:700;border-bottom:4px solid transparent}
 .nav a[aria-current="page"]{border-bottom-color:var(--tape)}
 .nav svg{width:1em;height:1em;vertical-align:-.12em;margin-right:.3em}
 
@@ -182,6 +182,40 @@ dialog .actions{display:flex;gap:8px;justify-content:flex-end}
 @media (max-width:520px){.add3,.catadd:not([data-kind=material]) .add3{grid-template-columns:1fr 1fr}.add3 input[name=name]{grid-column:1/-1}.add3 .btn{grid-column:1/-1}}
 input[readonly].ghost{cursor:default}
 input[readonly].ghost:hover{border-bottom-color:transparent}
+
+/* Lista de compra */
+:root{--ok:#2E7D32}
+@media (prefers-color-scheme:dark){:root{--ok:#7BC47F}}
+.badge{display:inline-block;min-width:1.4em;margin-left:6px;padding:0 6px;border-radius:999px;background:var(--tape);color:#11181F;font-size:.8rem;line-height:1.4em;text-align:center}
+.badge[hidden]{display:none}
+.pedir{display:flex;flex-direction:column;gap:10px;background:var(--card);border:2px solid var(--ink);border-radius:4px;padding:14px;margin:16px 0 22px}
+.pedir label{display:flex;flex-direction:column;gap:4px;font-weight:700}
+.pedir input,.pedir select{font:inherit;font-weight:400;color:inherit;background:var(--paper);border:1px solid var(--concrete);border-radius:6px;padding:10px 12px;min-width:0;width:100%}
+.pedir .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stock{margin:0;min-height:1.4em;font-weight:700}
+.stock.ok,.chip.ok{color:var(--ok)}
+.stock.warn,.chip.warn{color:var(--mute)}
+.chip{margin:6px 0 0;font-size:.92rem;font-weight:700}
+.sol{background:var(--card);border-left:6px solid var(--tape);border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:10px}
+.sol.aprobada{border-left-color:var(--ok)}
+.sol.rechazada{border-left-color:var(--concrete);opacity:.85}
+.sol .top2{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.sol .top2 .q{font-variant-numeric:tabular-nums}
+.sol .top2 .tag{margin-left:auto}
+.sol .meta{margin:2px 0 0;color:var(--mute);font-size:.9rem}
+.st-aprobada{background:var(--ok);color:#fff}
+.st-rechazada{background:var(--concrete)}
+.adm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--concrete)}
+.aq{display:flex;align-items:center;gap:6px;color:var(--mute)}
+.aq input{width:76px;padding:8px}
+.btn.sm{min-height:40px;padding:6px 12px}
+.closebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:18px 0 4px}
+.btn[aria-disabled=true]{opacity:.45;cursor:not-allowed}
+.etapa{background:var(--card);border:1px solid var(--concrete);border-radius:6px;padding:4px 14px 12px;margin-bottom:10px}
+.etapa summary{cursor:pointer;padding:10px 0;min-height:44px}
+.etapa .row.done .n,.etapa .row.done .t{text-decoration:line-through;opacity:.6}
+.etapa .row .btn{margin-left:auto}
+.rej{font-size:.9rem}
 </style>
 </head>
 <body>
@@ -191,7 +225,7 @@ input[readonly].ghost:hover{border-bottom-color:transparent}
     <div class="who" id="who" hidden><span>Sesión: <b id="who-label"></b></span><form method="post" action="/logout"><button class="linkbtn" id="logout" type="submit">Salir</button></form></div>
     <a class="brand" href="#/">Construcción Misiones</a>
     <nav class="nav" aria-label="Secciones">
-      <a href="#/avisos" data-nav="avisos">Avisos</a>
+      <a href="#/compras" data-nav="compras">Lista de compra<span class="badge" id="pend-badge" hidden></span></a>
       <a href="#/alumnos" data-nav="alumnos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Alumnos</a>
       <a href="#/inventario" data-nav="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Inventario</a>
     </nav>
@@ -215,7 +249,7 @@ input[readonly].ghost:hover{border-bottom-color:transparent}
 
 <script src="/names.js"></script>
 <script>
-const S = { role: null, open: false, cat: [], cuad: [], avisos: [], ready: false, q: { alumnos: "", inventario: "" } };
+const S = { role: null, open: false, cat: [], cuad: [], compras: { etapas: [], solicitudes: [] }, ready: false, q: { alumnos: "", inventario: "" } };
 const $ = s => document.querySelector(s);
 const view = $("#view"), dlg = $("#dlg");
 
@@ -251,7 +285,7 @@ function toast(msg) {
 // Devuelve { ok, status, data }. Los errores de reglas (400, 403, 409) traen un mensaje que se muestra tal cual.
 async function call(method, url, body, quiet) {
   try {
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json", "X-Cid": CID }, body: body === undefined ? undefined : JSON.stringify(body) });
     if (r.status === 401) { location.reload(); return { ok: false, status: 401 }; }
     let data = null; try { data = await r.json(); } catch {}
     status(true);
@@ -268,10 +302,10 @@ function save(c) {
   });
 }
 async function load(force) {
-  const [a, b, k] = await Promise.all([call("GET", "/api/cuadrillas", undefined, true), call("GET", "/api/avisos", undefined, true), call("GET", "/api/catalog", undefined, true)]);
+  const [a, b, k] = await Promise.all([call("GET", "/api/cuadrillas", undefined, true), call("GET", "/api/compras", undefined, true), call("GET", "/api/catalog", undefined, true)]);
   if (!a.ok || !b.ok || !k.ok) return;
-  const changed = JSON.stringify([a.data, b.data, k.data]) !== JSON.stringify([S.cuad, S.avisos, S.cat]);
-  S.cuad = a.data.filter(c => !c.parroquia); S.avisos = b.data; S.cat = k.data;
+  const changed = JSON.stringify([a.data, b.data, k.data]) !== JSON.stringify([S.cuad, S.compras, S.cat]);
+  S.cuad = a.data.filter(c => !c.parroquia); S.compras = b.data; S.cat = k.data;
   if (changed || !S.ready || force) { S.ready = true; render(); }
 }
 
@@ -342,15 +376,92 @@ function detail(id, tab) {
 }
 
 const when = iso => { try { return new Date(iso).toLocaleString("es-CL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
-function avisos() {
-  let autor = ""; try { autor = localStorage.getItem("autor") || ""; } catch {}
-  const list = S.avisos.length
-    ? S.avisos.map(a => `<article class="aviso"><strong>${esc(a.author)}:</strong><p>${esc(a.text)}</p><div class="meta"><span>${esc(when(a.ts))}</span>${canEdit() ? `<button data-act="delaviso" data-id="${a.id}">Borrar</button>` : ""}</div></article>`).join("")
-    : '<p class="empty">Todavía no hay avisos.</p>';
-  const form = canEdit()
-    ? `<form class="post" id="post"><input class="who-name" name="author" placeholder="Tu nombre" required maxlength="60" aria-label="Tu nombre" value="${esc(autor)}"><textarea name="text" placeholder="¿Qué necesitas avisar? Por ejemplo: alguien tiene el nivel grande" required maxlength="1000" aria-label="Mensaje"></textarea><button class="btn" type="submit" style="align-self:flex-start">Publicar aviso</button></form>`
-    : `<p class="note">Estás en modo de solo lectura: puedes ver los avisos, pero no publicar.</p>`;
-  return form + list;
+const day = iso => { try { return new Date(iso).toLocaleDateString("es-CL", { day: "numeric", month: "long" }); } catch { return ""; } };
+
+/* ---------- Lista de compra ---------- */
+// Un identificador por navegador: permite que cada persona anule sus propias solicitudes pendientes.
+const CID = (() => { try { let v = localStorage.getItem("cid"); if (!v) { v = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()); localStorage.setItem("cid", v); } return v; } catch { return Math.random().toString(36).slice(2); } })();
+const ST_LABEL = { pendiente: "Pendiente", aprobada: "Aprobada", rechazada: "Rechazada" };
+const matchItem = name => S.cat.find(e => Names.same(e.name, name));
+
+// ¿Lo que se pide ya está en la bodega? Avisa cuánto hay disponible y, si no queda, quién lo tiene.
+function stockInfo(name, q) {
+  const e = name.trim() && matchItem(name);
+  if (!e) return { cls: "", text: name.trim() ? "No está en la bodega central: habría que comprarlo." : "" };
+  const a = avail(e);
+  const where = S.cuad.map(c => ({ c, n: [...c.materials, ...c.tools].filter(x => x.i == e.id).reduce((s, x) => s + x.q, 0) })).filter(x => x.n > 0);
+  if (a > 0) return { cls: "ok", e, a, text: `Hay ${qtxt(a, e.unit)} de “${e.name}” disponibles en la parroquia${q > a ? `, menos de los ${q} que se piden` : ""}.` };
+  if (where.length) return { cls: "warn", e, a, text: `No queda “${e.name}” en la parroquia. Lo tienen: ${where.map(w => `${w.c.name} (${w.n})`).join(", ")}.` };
+  return { cls: "warn", e, a, text: `“${e.name}” está en la bodega, pero no queda stock.` };
+}
+const pendingCount = () => {
+  const ab = S.compras.etapas.find(e => e.state === "abierta");
+  return ab ? S.compras.solicitudes.filter(s => s.etapa === ab.id && s.status === "pendiente").length : 0;
+};
+
+function pedirForm() {
+  if (!canEdit()) return `<p class="note">Estás en modo de solo lectura: puedes ver la lista de compra, pero no pedir nada.</p>`;
+  let autor = "", last = ""; try { autor = localStorage.getItem("autor") || ""; last = localStorage.getItem("cuadrilla") || ""; } catch {}
+  if (!S.cuad.length) return `<p class="note">Primero hay que crear una cuadrilla para poder hacer pedidos.</p>`;
+  return `<form class="pedir" id="pedir" autocomplete="off">
+  <h2 class="h-sec" style="margin-top:0">Pedir algo</h2>
+  <label>Tu nombre<input name="author" required maxlength="60" value="${esc(autor)}"></label>
+  <label>Tu cuadrilla<select name="cuadrilla" required><option value="" disabled${last ? "" : " selected"}>Elige tu cuadrilla</option>${S.cuad.map(c => `<option value="${c.id}"${String(c.id) === last ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+  <label>¿Qué necesitas?<input name="name" list="items" required maxlength="80" placeholder="Por ejemplo: pintura blanca"></label>
+  <datalist id="items">${S.cat.slice().sort(byName).map(e => `<option value="${esc(e.name)}"></option>`).join("")}</datalist>
+  <div class="two"><label>Cantidad<input name="q" type="number" min="1" value="1" inputmode="numeric" required></label><label>Unidad<input name="unit" maxlength="12" placeholder="sacos, m, un"></label></div>
+  <p class="stock" id="stock" role="status"></p>
+  <button class="btn" type="submit">Enviar solicitud</button></form>`;
+}
+
+function solCard(s, open) {
+  const info = open && s.status !== "rechazada" ? stockInfo(s.name, s.status === "aprobada" ? s.approvedQ : s.q) : { cls: "" };
+  const stock = info.e ? `<p class="chip ${info.cls}">${info.cls === "ok" ? "Disponible: " : ""}${esc(info.text)}</p>` : "";
+  const approved = s.status === "aprobada" && s.approvedQ !== s.q ? ` · se aprobaron ${esc(qtxt(s.approvedQ, s.unit))}` : "";
+  let controls = "";
+  if (open && isAdmin()) controls = `<div class="adm"><label class="aq">Cantidad<input type="number" min="1" value="${s.approvedQ ?? s.q}" data-aq aria-label="Cantidad a aprobar"></label>
+    <button class="btn sm" data-act="approve" data-id="${s.id}">${s.status === "aprobada" ? "Actualizar" : "Aprobar"}</button>
+    <button class="btn sm ghosty" data-act="reject" data-id="${s.id}">Rechazar</button>
+    ${s.status !== "pendiente" ? `<button class="linkbtn" data-act="pending" data-id="${s.id}">Volver a pendiente</button>` : ""}
+    <button class="linkbtn" data-act="delsol" data-id="${s.id}">Eliminar</button></div>`;
+  else if (open && s.mine && s.status === "pendiente") controls = `<div class="adm"><button class="linkbtn" data-act="delsol" data-id="${s.id}">Anular mi solicitud</button></div>`;
+  return `<article class="sol ${s.status}"><div class="top2"><strong>${esc(s.name)}</strong><span class="q">${esc(qtxt(s.q, s.unit))}</span><span class="tag st-${s.status}">${ST_LABEL[s.status]}</span></div>
+  <p class="meta">${esc(s.author)} · ${esc(s.cuadrilla.name)} · ${esc(when(s.ts))}${approved}</p>${s.note ? `<p class="meta">Motivo: ${esc(s.note)}</p>` : ""}${stock}${controls}</article>`;
+}
+
+function etapaCerrada(e, sols) {
+  const ap = sols.filter(s => s.status === "aprobada"), rej = sols.filter(s => s.status === "rechazada");
+  const groups = [];
+  for (const s of ap) {
+    let g = groups.find(x => Names.same(x.name, s.name) && norm(x.unit) === norm(s.unit));
+    if (!g) groups.push(g = { name: s.name, unit: s.unit, q: 0, from: [], ids: [], bought: true });
+    g.q += s.approvedQ; g.from.push(`${s.cuadrilla.name} (${s.approvedQ})`); g.ids.push(s.id); g.bought = g.bought && s.bought;
+  }
+  groups.sort(byName);
+  const todo = ap.filter(s => !s.bought);
+  const rows = groups.map(g => `<li class="row${g.bought ? " done" : ""}"><span class="n">${esc(g.name)}<small>${esc(g.from.join(", "))}</small></span><b class="t">${esc(qtxt(g.q, g.unit))}</b>${isAdmin()
+    ? `<button class="btn sm${g.bought ? " ghosty" : ""}" data-act="bought" data-ids="${g.ids.join(",")}" data-v="${g.bought ? "0" : "1"}">${g.bought ? "Deshacer" : "Marcar comprado"}</button>`
+    : `<span class="tag ${g.bought ? "st-aprobada" : ""}">${g.bought ? "Comprado" : "Por comprar"}</span>`}</li>`).join("");
+  return `<details class="etapa"><summary><b>${esc(e.name)}</b> · cerrada el ${esc(day(e.closedAt))} · ${todo.length ? plural(todo.length, "solicitud por comprar", "solicitudes por comprar") : "todo comprado"}</summary>
+  <ul>${rows}</ul>
+  ${isAdmin() && todo.length ? `<button class="btn" data-act="bought" data-ids="${todo.map(s => s.id).join(",")}" data-v="1">Marcar todo como comprado</button>` : ""}
+  ${rej.length ? `<p class="mute rej">Rechazadas: ${rej.map(s => `${esc(s.name)} (${esc(s.cuadrilla.name)})${s.note ? " — " + esc(s.note) : ""}`).join("; ")}</p>` : ""}</details>`;
+}
+
+function compras() {
+  const { etapas, solicitudes } = S.compras;
+  const abierta = etapas.find(e => e.state === "abierta");
+  const cerradas = etapas.filter(e => e.state === "cerrada").sort((a, b) => b.id - a.id);
+  const act = abierta ? solicitudes.filter(s => s.etapa === abierta.id).sort((a, b) => a.id - b.id) : [];
+  const n = st => act.filter(s => s.status === st).length;
+  const close = isAdmin() ? `<div class="closebar"><button class="btn" data-act="closeStage"${n("aprobada") ? "" : ' aria-disabled="true"'}>Cerrar etapa</button><span class="mute">${n("aprobada") ? `Lo aprobado pasa a la lista para comprar. ${n("pendiente") ? plural(n("pendiente"), "pendiente pasa", "pendientes pasan") + " a la etapa siguiente." : ""}` : "Aprueba al menos una solicitud para poder cerrar la etapa."}</span></div>` : "";
+  return `<h1 class="h-sec big">Lista de compra</h1>
+  <p class="mute">Lo que cada cuadrilla necesita y no tiene. El administrador aprueba o rechaza y cierra la etapa; lo aprobado se compra después.</p>
+  ${pedirForm()}
+  <h2 class="h-sec">${esc(abierta ? abierta.name : "Etapa actual")} <small class="mute">abierta</small></h2>
+  ${act.length ? `<p class="mute">${plural(n("pendiente"), "pendiente", "pendientes")} · ${plural(n("aprobada"), "aprobada", "aprobadas")} · ${plural(n("rechazada"), "rechazada", "rechazadas")}</p>${act.map(s => solCard(s, true)).join("")}` : `<p class="empty">Todavía no hay solicitudes en esta etapa.</p>`}
+  ${close}
+  ${cerradas.length ? `<h2 class="h-sec">Etapas cerradas</h2>${cerradas.map(e => etapaCerrada(e, solicitudes.filter(s => s.etapa === e.id))).join("")}` : ""}`;
 }
 
 function alumnosResults() {
@@ -415,17 +526,20 @@ function itemView(id) {
 function render() {
   const h = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   const page = h[0] || "";
+  if (page === "avisos") { location.replace("#/compras"); return; }
   document.querySelectorAll("[data-nav]").forEach(a => { if (a.dataset.nav === page) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (!S.ready) return;
   let html, title = "Construcción Misiones";
   if (page === "c") { html = detail(h[1], h[2] === "personas" ? "personas" : "materiales"); title = (cuad(h[1])?.name || "Cuadrilla") + " · " + title; }
   else if (page === "parroquia") { html = parroquia(); title = "Parroquia · " + title; }
-  else if (page === "avisos") { html = avisos(); title = "Avisos · " + title; }
+  else if (page === "compras") { html = compras(); title = "Lista de compra · " + title; }
   else if (page === "alumnos") { html = alumnos(); title = "Alumnos · " + title; }
   else if (page === "inventario") { html = h[1] ? itemView(h[1]) : inventario(); title = "Bodega central · " + title; }
   else html = home();
   view.innerHTML = html;
   document.title = title;
+  const nb = $("#pend-badge"), np = isAdmin() ? pendingCount() : 0;
+  nb.hidden = !np; nb.textContent = np; nb.setAttribute("aria-label", plural(np, "solicitud pendiente", "solicitudes pendientes"));
 }
 window.addEventListener("hashchange", () => { render(); scrollTo(0, 0); });
 
@@ -451,6 +565,34 @@ function choose(form, e) {
 /* ---------- Acciones ---------- */
 const refocus = sel => { const el = view.querySelector(sel); if (el) el.focus(); };
 
+async function compraAction(b, act) {
+  const list = S.compras.solicitudes, ids = (b.dataset.ids || b.dataset.id || "").split(",").map(Number);
+  const sol = list.find(x => x.id === ids[0]);
+  const patch = r => { if (r.ok) { for (const x of [].concat(r.data)) { const i = list.findIndex(y => y.id === x.id); if (i >= 0) list[i] = x; } render(); } else load(true); };
+  if (act === "approve") return patch(await call("PUT", "/api/solicitudes/" + sol.id, { status: "aprobada", approvedQ: b.closest(".sol").querySelector("[data-aq]").value }));
+  if (act === "reject") {
+    const note = prompt(`Motivo del rechazo de “${sol.name}” (opcional):`);
+    if (note === null) return;
+    return patch(await call("PUT", "/api/solicitudes/" + sol.id, { status: "rechazada", note }));
+  }
+  if (act === "pending") return patch(await call("PUT", "/api/solicitudes/" + sol.id, { status: "pendiente" }));
+  if (act === "delsol") {
+    if (!confirm(`¿Eliminar la solicitud de “${sol.name}”?`)) return;
+    const r = await call("DELETE", "/api/solicitudes/" + sol.id);
+    if (r.ok) { S.compras.solicitudes = list.filter(x => x.id !== sol.id); render(); } else load(true);
+    return;
+  }
+  if (act === "bought") return patch(await call("POST", "/api/solicitudes/comprado", { ids, bought: b.dataset.v === "1" }));
+  if (act === "closeStage") {
+    if (b.getAttribute("aria-disabled")) return toast("Aprueba al menos una solicitud para poder cerrar la etapa.");
+    const ab = S.compras.etapas.find(e => e.state === "abierta"), mine = list.filter(x => x.etapa === ab.id);
+    const na = mine.filter(x => x.status === "aprobada").length, np = mine.filter(x => x.status === "pendiente").length;
+    if (!confirm(`¿Cerrar ${ab.name}? Se cierran ${plural(na, "solicitud aprobada", "solicitudes aprobadas")}${np ? ` y ${plural(np, "pendiente pasa", "pendientes pasan")} a la etapa siguiente` : ""}. Ya no se podrán cambiar.`)) return;
+    const r = await call("POST", "/api/etapas/cerrar");
+    if (r.ok) { S.compras = r.data; render(); toast(`${ab.name} cerrada. Lo aprobado quedó en la lista para comprar.`); } else load(true);
+  }
+}
+
 document.addEventListener("click", async e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
   const act = b.dataset.act, c = cuad(b.dataset.id), k = b.dataset.k;
@@ -465,11 +607,7 @@ document.addEventListener("click", async e => {
     dlg.showModal(); dlg.querySelector("[name=name]").select(); return;
   }
   if (act === "closedlg") return dlg.close();
-  if (act === "delaviso") {
-    if (!confirm("¿Borrar este aviso?")) return;
-    S.avisos = S.avisos.filter(a => a.id != b.dataset.id); render();
-    return void call("DELETE", "/api/avisos/" + b.dataset.id);
-  }
+  if (["approve", "reject", "pending", "delsol", "closeStage", "bought"].includes(act)) return compraAction(b, act);
   if (act === "catdel") {
     const it = item(b.dataset.id);
     if (!it || !confirm(`¿Eliminar “${it.name}” de la bodega central?`)) return;
@@ -504,10 +642,12 @@ document.addEventListener("submit", async e => {
     if (!c.name) return;
     S.cuad.push(c); f.reset(); dlg.close(); save(c); location.hash = "#/c/" + c.id; return;
   }
-  if (f.id === "post") {
-    try { localStorage.setItem("autor", d.get("author").trim()); } catch {}
-    const r = await call("POST", "/api/avisos", { author: d.get("author"), text: d.get("text") });
-    if (r.ok) { S.avisos.unshift(r.data); render(); }
+  if (f.id === "pedir") {
+    const name = d.get("name").trim(), q = Math.max(1, Math.floor(+d.get("q") || 1));
+    try { localStorage.setItem("autor", d.get("author").trim()); localStorage.setItem("cuadrilla", d.get("cuadrilla")); } catch {}
+    const info = stockInfo(name, q);
+    const r = await call("POST", "/api/solicitudes", { author: d.get("author"), cuadrilla: d.get("cuadrilla"), name, q, unit: d.get("unit") });
+    if (r.ok) { await load(true); toast(info.text ? "Solicitud enviada. " + info.text : "Solicitud enviada."); } // recarga: la primera solicitud crea la etapa en el servidor
     return;
   }
   if (f.id === "catadd") {
@@ -567,6 +707,9 @@ document.addEventListener("input", e => {
   } else if (t.name === "n" && t.form?.classList.contains("pick")) {
     const f = t.form; f.elements.i.value = ""; f.classList.remove("chosen"); f.querySelector(".hint").textContent = "";
     suggest(f);
+  } else if (t.form?.id === "pedir" && (t.name === "name" || t.name === "q")) {
+    const f = t.form, info = stockInfo(f.elements.name.value, +f.elements.q.value || 1), el = $("#stock");
+    el.className = "stock " + info.cls; el.textContent = info.text;
   } else if (t.name === "name" && t.form?.id === "catadd") {
     const dup = S.cat.find(x => Names.same(x.name, t.value));
     $("#cathint").textContent = dup ? `Ya existe “${dup.name}” como ${KIND_LABEL[dup.kind]}.` : "";
