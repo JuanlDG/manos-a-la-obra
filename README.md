@@ -25,7 +25,7 @@ Abrir http://localhost:3000. La tabla `jobs` se crea sola al iniciar.
 | Rol | Cómo entra | Qué puede hacer |
 |---|---|---|
 | Administrador | `ADMIN_PASSWORD` | Todo, incluido cambiar la bodega central (inventario). |
-| Usuario | `APP_PASSWORD` | Editar cuadrillas y personas (usando solo lo que ya está en la bodega) y pedir compras. |
+| Usuario | `APP_PASSWORD` | Editar cuadrillas (usando solo lo que ya está en la bodega) y pedir compras. No puede agregar ni quitar personas. |
 | Solo lectura | “Entrar sin contraseña” | Ver todo, no cambiar nada. |
 
 Sin `ADMIN_PASSWORD` nadie puede cambiar la bodega. Si no se define ninguna contraseña (por ejemplo en local), la app queda abierta y todos son administradores.
@@ -46,3 +46,10 @@ Los datos se comparten entre todos los usuarios (tablas `catalog`, `cuadrillas` 
 - Después, el administrador marca como comprado cada línea o toda la etapa. Las etapas cerradas quedan como registro.
 - Cada persona puede anular sus propias solicitudes mientras estén pendientes (se reconoce por el navegador).
 - Al marcar como comprado, la cantidad aprobada se suma sola a la bodega central. Si el elemento todavía no existe, la app pregunta si es material o herramienta. Deshacer resta lo mismo (no si las cuadrillas ya lo tienen asignado). Si la unidad pedida no coincide con la de la bodega, no suma y hay que ajustarlo a mano en Inventario.
+
+## Quién es cada persona
+
+- Las personas (equipo motor y alumnos) solo las agrega o quita el administrador.
+- La primera vez que entra un usuario, elige su nombre de la lista del equipo motor. Desde entonces sus pedidos se firman solos con su nombre y su cuadrilla; puede cambiarlo con “Cambiar” en la barra superior. Si el administrador lo saca del equipo motor, vuelve a pedírsele.
+- El administrador, si no eligió identidad, firma como “Administrador” y elige la cuadrilla al pedir.
+- Eliminar un elemento de la bodega pide doble confirmación: primero “¿seguro?” y luego escribir su nombre. El servidor también exige el nombre.

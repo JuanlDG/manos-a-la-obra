@@ -218,13 +218,20 @@ input[readonly].ghost:hover{border-bottom-color:transparent}
 .etapa .row .n{flex:1 1 9em;min-width:9em}
 .etapa .row .btn{margin-left:auto}
 .rej{font-size:.9rem}
+
+.btn.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn.danger[disabled]{opacity:.45;cursor:not-allowed}
+@media (prefers-color-scheme:dark){.btn.danger{color:#11181F}}
+.btn.danger:hover{filter:brightness(1.08)}
+.yo-line{margin:0 0 4px;font-weight:700}
+dialog select,dialog input{font:inherit;font-weight:400;color:inherit;background:var(--card);border:1px solid var(--concrete);border-radius:6px;padding:10px 12px;width:100%;min-width:0}
 </style>
 </head>
 <body>
 <div id="status" role="alert" hidden>Sin conexión con el servidor. Los últimos cambios podrían no haberse guardado.</div>
 <div class="wrap">
   <header class="top">
-    <div class="who" id="who" hidden><span>Sesión: <b id="who-label"></b></span><form method="post" action="/logout"><button class="linkbtn" id="logout" type="submit">Salir</button></form></div>
+    <div class="who" id="who" hidden><span>Sesión: <b id="who-label"></b><span id="yo-wrap" hidden> · <b id="yo-label"></b> <button class="linkbtn" id="yo-change" type="button">Cambiar</button></span></span><form method="post" action="/logout"><button class="linkbtn" id="logout" type="submit">Salir</button></form></div>
     <a class="brand" href="#/">Construcción Misiones</a>
     <nav class="nav" aria-label="Secciones">
       <a href="#/compras" data-nav="compras">Lista de compra<span class="badge" id="pend-badge" hidden></span></a>
@@ -249,6 +256,30 @@ input[readonly].ghost:hover{border-bottom-color:transparent}
   </form>
 </dialog>
 
+<dialog id="ydlg">
+  <form id="yform">
+    <h2 class="h-sec" style="margin:0">¿Quién eres?</h2>
+    <p id="ymsg">Elige tu nombre de la lista del equipo motor. Con eso se firman tus pedidos y no tendrás que escribirlo cada vez.</p>
+    <label id="ylabel">Tu nombre<select name="who" required></select></label>
+    <div class="actions">
+      <button class="btn ghosty" type="button" id="ycancel">Ahora no</button>
+      <button class="btn" type="submit" id="ygo">Continuar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="ddlg">
+  <form id="dform">
+    <h2 class="h-sec" style="margin:0" id="dtitle"></h2>
+    <p id="dtext"></p>
+    <label id="dlabel" hidden>Escribe el nombre para confirmar<input id="dinput" autocomplete="off"></label>
+    <div class="actions">
+      <button class="btn ghosty" type="button" id="dcancel">Cancelar</button>
+      <button class="btn danger" type="button" id="dnext">Continuar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="kdlg">
   <form method="dialog">
     <h2 class="h-sec" style="margin:0">Elemento nuevo en la bodega</h2>
@@ -263,7 +294,7 @@ input[readonly].ghost:hover{border-bottom-color:transparent}
 
 <script src="/names.js"></script>
 <script>
-const S = { role: null, open: false, cat: [], cuad: [], compras: { etapas: [], solicitudes: [] }, ready: false, openEtapa: {}, q: { alumnos: "", inventario: "" } };
+const S = { role: null, open: false, cat: [], cuad: [], compras: { etapas: [], solicitudes: [] }, yo: null, ready: false, openEtapa: {}, q: { alumnos: "", inventario: "" } };
 const $ = s => document.querySelector(s);
 const view = $("#view"), dlg = $("#dlg");
 
@@ -318,8 +349,11 @@ function save(c) {
 async function load(force) {
   const [a, b, k] = await Promise.all([call("GET", "/api/cuadrillas", undefined, true), call("GET", "/api/compras", undefined, true), call("GET", "/api/catalog", undefined, true)]);
   if (!a.ok || !b.ok || !k.ok) return;
-  const changed = JSON.stringify([a.data, b.data, k.data]) !== JSON.stringify([S.cuad, S.compras, S.cat]);
+  let changed = JSON.stringify([a.data, b.data, k.data]) !== JSON.stringify([S.cuad, S.compras, S.cat]);
   S.cuad = a.data.filter(c => !c.parroquia); S.compras = b.data; S.cat = k.data;
+  const me = await call("GET", "/api/me", undefined, true);
+  if (me.ok) { const prevYo = JSON.stringify(S.yo); S.yo = me.data.yo; updateWho(); if (JSON.stringify(S.yo) !== prevYo) changed = true; }
+  checkWho();
   if (changed || !S.ready || force) { S.ready = true; render(); }
 }
 
@@ -368,11 +402,11 @@ const addPick = (c, k) => canEdit() ? `<form class="add pick" data-add="${k}" da
   <p class="hint" role="status"></p></form>` : "";
 
 function chipList(c, k) {
-  const a = c[k], ed = canEdit();
+  const a = c[k], ed = isAdmin();
   if (!a.length) return `<p class="empty">Nadie registrado todavía.</p>`;
   return '<div class="chips">' + a.map((n, i) => `<div class="chip"><span>${esc(n)}</span>${ed ? `<button class="sq x" data-act="del" data-id="${c.id}" data-k="${k}" data-i="${i}" aria-label="Quitar a ${esc(n)}">×</button>` : ""}</div>`).join("") + "</div>";
 }
-const addPerson = (c, k) => canEdit() ? `<form class="add one" data-add="${k}" data-id="${c.id}"><input name="n" placeholder="Nombre" required maxlength="60" aria-label="Nombre"><button class="btn" type="submit">Agregar</button></form>` : "";
+const addPerson = (c, k) => isAdmin() ? `<form class="add one" data-add="${k}" data-id="${c.id}"><input name="n" placeholder="Nombre" required maxlength="60" aria-label="Nombre"><button class="btn" type="submit">Agregar</button></form>` : "";
 
 function detail(id, tab) {
   const c = cuad(id), ro = canEdit() ? "" : " readonly";
@@ -380,7 +414,7 @@ function detail(id, tab) {
   const tabs = `<nav class="tabs" aria-label="Contenido de la cuadrilla"><a href="#/c/${c.id}/materiales"${tab === "materiales" ? ' aria-current="page"' : ""}>Materiales</a><a href="#/c/${c.id}/personas"${tab === "personas" ? ' aria-current="page"' : ""}>Personas</a></nav>`;
   const list = k => `<h2 class="h-sec">${LISTS[k].title}</h2>${qtyList(c, k)}${addPick(c, k)}`;
   const body = tab === "personas"
-    ? `<h2 class="h-sec">Equipo motor</h2>${chipList(c, "motor")}${addPerson(c, "motor")}<h2 class="h-sec">Alumnos</h2>${chipList(c, "alumnos")}${addPerson(c, "alumnos")}`
+    ? `${isAdmin() ? "" : `<p class="note">Solo el administrador puede agregar o quitar personas.</p>`}<h2 class="h-sec">Equipo motor</h2>${chipList(c, "motor")}${addPerson(c, "motor")}<h2 class="h-sec">Alumnos</h2>${chipList(c, "alumnos")}${addPerson(c, "alumnos")}`
     : `${list("materials")}${list("tools")}`;
   const del = canEdit() ? `<button class="link-danger" data-act="rmc" data-id="${c.id}">Eliminar cuadrilla</button>` : "";
   return `<a class="back" href="#/" aria-label="Volver a las cuadrillas">${BACK}</a>
@@ -415,12 +449,15 @@ const pendingCount = () => {
 
 function pedirForm() {
   if (!canEdit()) return `<p class="note">Estás en modo de solo lectura: puedes ver la lista de compra, pero no pedir nada.</p>`;
-  let autor = "", last = ""; try { autor = localStorage.getItem("autor") || ""; last = localStorage.getItem("cuadrilla") || ""; } catch {}
   if (!S.cuad.length) return `<p class="note">Primero hay que crear una cuadrilla para poder hacer pedidos.</p>`;
+  if (!S.yo && !isAdmin()) return `<div class="note">Para pedir, primero elige tu nombre de la lista del equipo motor.<br><button class="btn sm" type="button" data-act="who" style="margin-top:8px">Elegir mi nombre</button></div>`;
+  // Con identidad, el nombre y la cuadrilla se asignan solos. El administrador sin identidad firma como Administrador y elige la cuadrilla.
+  const quien = S.yo
+    ? `<p class="yo-line">Pides como ${esc(S.yo.name)} · ${esc(S.yo.cuadrilla.name)}</p>`
+    : `<label>Cuadrilla<select name="cuadrilla" required><option value="" disabled selected>Elige la cuadrilla</option>${S.cuad.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></label>`;
   return `<form class="pedir" id="pedir" autocomplete="off">
-  <h2 class="h-sec" style="margin-top:0">Pedir algo</h2>
-  <label>Tu nombre<input name="author" required maxlength="60" value="${esc(autor)}"></label>
-  <label>Tu cuadrilla<select name="cuadrilla" required><option value="" disabled${last ? "" : " selected"}>Elige tu cuadrilla</option>${S.cuad.map(c => `<option value="${c.id}"${String(c.id) === last ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+  <h2 class="h-sec" style="margin:0 0 4px">Pedir algo</h2>
+  ${quien}
   <label>¿Qué necesitas?<input name="name" list="items" required maxlength="80" placeholder="Por ejemplo: pintura blanca"></label>
   <datalist id="items">${S.cat.slice().sort(byName).map(e => `<option value="${esc(e.name)}"></option>`).join("")}</datalist>
   <div class="two"><label>Cantidad<input name="q" type="number" min="1" value="1" inputmode="numeric" required></label><label>Unidad<input name="unit" maxlength="12" placeholder="sacos, m, un"></label></div>
@@ -580,6 +617,66 @@ function choose(form, e) {
 /* ---------- Acciones ---------- */
 const refocus = sel => { const el = view.querySelector(sel); if (el) el.focus(); };
 
+function confirmDelete(name) {
+  return new Promise(res => {
+    const d = $("#ddlg"), next = $("#dnext"), input = $("#dinput");
+    let step = 1;
+    const show = () => {
+      $("#dtitle").textContent = step === 1 ? "¿Eliminar de la bodega?" : "Última confirmación";
+      $("#dtext").textContent = step === 1
+        ? `“${name}” se borra del inventario de la bodega central.`
+        : `Esto no se puede deshacer. Escribe ${name} para confirmar.`;
+      $("#dlabel").hidden = step === 1; input.value = "";
+      next.textContent = step === 1 ? "Continuar" : "Eliminar definitivamente";
+      next.disabled = step === 2;
+      if (step === 2) input.focus();
+    };
+    const done = v => { d.removeEventListener("click", onClick); d.removeEventListener("cancel", onCancel); input.removeEventListener("input", onInput); if (d.open) d.close(); res(v); };
+    const onInput = () => { next.disabled = input.value.trim().toLowerCase() !== name.toLowerCase(); };
+    const onClick = e => {
+      if (e.target.closest("#dcancel")) return done(null);
+      if (e.target.closest("#dnext") && !next.disabled) { if (step === 1) { step = 2; show(); } else done(input.value.trim()); }
+    };
+    const onCancel = () => done(null);
+    d.addEventListener("click", onClick); d.addEventListener("cancel", onCancel); input.addEventListener("input", onInput);
+    show(); d.showModal();
+  });
+}
+
+/* ---------- Quién eres (equipo motor) ---------- */
+const equipo = () => S.cuad.flatMap(c => c.motor.map(name => ({ cuadrilla: c, name })));
+function updateWho() {
+  $("#yo-wrap").hidden = !(S.role === "usuario" && S.yo);
+  $("#yo-label").textContent = S.yo ? S.yo.name : "";
+}
+function openWho(forced) {
+  const d = $("#ydlg"), list = equipo(), sel = d.querySelector("select");
+  if (d.open) return;
+  d.dataset.forced = forced && list.length ? "1" : "";
+  if (!list.length) {
+    $("#ymsg").textContent = "Todavía no hay personas en el equipo motor. Pídele al administrador que te agregue y vuelve a entrar.";
+    $("#ylabel").hidden = true; $("#ygo").hidden = true; $("#ycancel").textContent = "Cerrar";
+  } else {
+    $("#ymsg").textContent = "Elige tu nombre de la lista del equipo motor. Con eso se firman tus pedidos y no tendrás que escribirlo cada vez.";
+    $("#ylabel").hidden = false; $("#ygo").hidden = false; $("#ycancel").textContent = "Ahora no";
+    $("#ycancel").hidden = !!d.dataset.forced;
+    sel.innerHTML = S.cuad.filter(c => c.motor.length).map(c => `<optgroup label="${esc(c.name)}">${c.motor.map(n => `<option value="${list.findIndex(x => x.cuadrilla === c && x.name === n)}"${S.yo && S.yo.name === n && S.yo.cuadrilla.id === c.id ? " selected" : ""}>${esc(n)}</option>`).join("")}</optgroup>`).join("");
+  }
+  d.showModal();
+}
+$("#ydlg").addEventListener("cancel", e => { if (e.target.dataset.forced) e.preventDefault(); }); // sin elegir no se sigue
+$("#ycancel").addEventListener("click", () => $("#ydlg").close());
+$("#yform").addEventListener("submit", async e => {
+  e.preventDefault();
+  const pick = equipo()[+e.target.elements.who.value];
+  if (!pick) return;
+  const r = await call("POST", "/api/yo", { cuadrilla: pick.cuadrilla.id, name: pick.name });
+  if (r.ok) { S.yo = r.data; $("#ydlg").close(); updateWho(); render(); toast(`Hola, ${pick.name}.`); }
+});
+$("#yo-change").addEventListener("click", () => openWho(false));
+// Quien entra como usuario debe elegir quién es; si el administrador lo saca del equipo, vuelve a pedirse.
+function checkWho() { if (S.role === "usuario" && !S.yo && !$("#ydlg").open && !S.yoSkipped) { if (!equipo().length) S.yoSkipped = true; openWho(true); } }
+
 function askKind(name) {
   return new Promise(res => {
     const d = $("#kdlg"); d.querySelector("[data-name]").textContent = "“" + name + "”";
@@ -650,11 +747,14 @@ document.addEventListener("click", async e => {
     dlg.showModal(); dlg.querySelector("[name=name]").select(); return;
   }
   if (act === "closedlg") return dlg.close();
+  if (act === "who") return openWho(false);
   if (["approve", "reject", "pending", "delsol", "closeStage", "bought"].includes(act)) return compraAction(b, act);
   if (act === "catdel") {
     const it = item(b.dataset.id);
-    if (!it || !confirm(`¿Eliminar “${it.name}” de la bodega central?`)) return;
-    const r = await call("DELETE", "/api/catalog/" + it.id);
+    if (!it) return;
+    const typed = await confirmDelete(it.name); // 1.º ¿seguro? · 2.º escribir el nombre
+    if (typed === null) return;
+    const r = await call("DELETE", "/api/catalog/" + it.id, { confirmar: typed });
     if (r.ok) { S.cat = S.cat.filter(x => x.id !== it.id); location.hash = "#/inventario"; render(); } else load(true);
     return;
   }
@@ -678,7 +778,7 @@ document.addEventListener("click", async e => {
 
 document.addEventListener("submit", async e => {
   const f = e.target;
-  if (f.closest("#kdlg")) return; // el diálogo de tipo se cierra solo con el valor del botón
+  if (f.closest("#kdlg") || f.id === "yform" || f.id === "dform") return; // el diálogo de tipo se cierra solo con el valor del botón
   e.preventDefault();
   const d = new FormData(f);
   if (f.id === "newc") {
@@ -688,9 +788,8 @@ document.addEventListener("submit", async e => {
   }
   if (f.id === "pedir") {
     const name = d.get("name").trim(), q = Math.max(1, Math.floor(+d.get("q") || 1));
-    try { localStorage.setItem("autor", d.get("author").trim()); localStorage.setItem("cuadrilla", d.get("cuadrilla")); } catch {}
     const info = stockInfo(name, q);
-    const r = await call("POST", "/api/solicitudes", { author: d.get("author"), cuadrilla: d.get("cuadrilla"), name, q, unit: d.get("unit") });
+    const r = await call("POST", "/api/solicitudes", { cuadrilla: d.get("cuadrilla"), name, q, unit: d.get("unit") });
     if (r.ok) { await load(true); toast(info.text ? "Solicitud enviada. " + info.text : "Solicitud enviada."); } // recarga: la primera solicitud crea la etapa en el servidor
     return;
   }
@@ -788,7 +887,7 @@ $("#logout").addEventListener("click", async e => {
   render();
   const me = await call("GET", "/api/me", undefined, true);
   if (me.ok) {
-    S.role = me.data.role; S.open = me.data.open;
+    S.role = me.data.role; S.open = me.data.open; S.yo = me.data.yo;
     $("#who-label").textContent = ROLE_LABEL[S.role] || "";
     $("#who").hidden = false; $("#logout").hidden = S.open;
     if (S.role === "visitante") $("#logout").textContent = "Cambiar de rol";

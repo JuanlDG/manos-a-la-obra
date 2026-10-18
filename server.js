@@ -82,9 +82,22 @@ function roleOf(req) {
   const [role, sig] = cookieOf(req, "acceso").split(".");
   return ["admin", "usuario", "visitante"].includes(role) && sig && same(sig, sign(role)) ? role : null;
 }
-const setCookie = (req, value, maxAge) =>
-  `acceso=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}` +
+const cookie = (req, name, value, maxAge) =>
+  `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}` +
   (req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "");
+const setCookie = (req, value, maxAge) => cookie(req, "acceso", value, maxAge);
+
+// Quién es la persona que usa la app: alguien del equipo motor de una cuadrilla, elegido la primera vez que entra.
+// No es una credencial (la contraseña es compartida): sirve para firmar automáticamente sus pedidos.
+// Se vuelve a comprobar contra los datos en cada uso: si la sacan del equipo motor, deja de valer.
+function whoAmI(req, cuadrillas) {
+  const raw = cookieOf(req, "yo"), i = raw.indexOf(".");
+  if (i < 1) return null;
+  let name;
+  try { name = decodeURIComponent(raw.slice(i + 1)); } catch { return null; }
+  const cu = cuadrillas.find((c) => String(c.id) === raw.slice(0, i) && c.motor.includes(name));
+  return cu ? { name, cuadrilla: { id: cu.id, name: cu.name } } : null;
+}
 
 const failures = new Map(); // ip -> { n, until }
 const ipOf = (req) => (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
@@ -217,7 +230,18 @@ async function handleApi(req, res, url, role) {
   const canEdit = role === "admin" || role === "usuario";
   const need = (ok) => { if (!ok) throw new HttpError(403, "Tu rol no permite hacer cambios."); };
 
-  if (url === "/api/me" && m === "GET") return send(res, 200, { role, open: OPEN });
+  if (url === "/api/me" && m === "GET")
+    return send(res, 200, { role, open: OPEN, yo: whoAmI(req, await allData(pool, "cuadrillas")) });
+
+  if (url === "/api/yo" && m === "POST") {
+    need(canEdit);
+    const b = await readBody(req), name = clip(b.name, 60);
+    const cuadrillas = await allData(pool, "cuadrillas");
+    const cu = cuadrillas.find((c) => c.id === Number(b.cuadrilla) && c.motor.includes(name));
+    if (!cu) throw new HttpError(400, "Elige tu nombre de la lista del equipo motor.");
+    res.setHeader("Set-Cookie", cookie(req, "yo", `${cu.id}.${encodeURIComponent(name)}`, 60 * 60 * 24 * 365));
+    return send(res, 200, { name, cuadrilla: { id: cu.id, name: cu.name } });
+  }
 
   // ---- Bodega central: catálogo de materiales y herramientas con su cantidad total
   if (url === "/api/catalog" && m === "GET")
@@ -270,8 +294,11 @@ async function handleApi(req, res, url, role) {
       }));
     }
     if (m === "DELETE") {
+      const b = await readBody(req);
       return send(res, 200, await tx(async (c) => {
         const e = (await allData(c, "catalog")).find((x) => x.id === id);
+        if (e && clip(b.confirmar, 60).toLowerCase() !== e.name.toLowerCase())
+          throw new HttpError(400, `Para eliminar “${e.name}” hay que escribir su nombre exacto como confirmación.`);
         if (e && assigned(await allData(c, "cuadrillas"), id) > 0)
           throw new HttpError(409, `“${e.name}” está asignado a cuadrillas. Primero devuélvelo a la parroquia.`);
         await c.query("DELETE FROM catalog WHERE id = $1", [id]);
@@ -293,6 +320,11 @@ async function handleApi(req, res, url, role) {
       return send(res, 200, await tx(async (c) => {
         const cuadrillas = await allData(c, "cuadrillas");
         const data = cleanCuadrilla(id, b, await allData(c, "catalog"), cuadrillas.filter((x) => String(x.id) !== id));
+        if (role !== "admin") { // las personas las administra solo el administrador: se conservan las que ya había
+          const before = cuadrillas.find((x) => String(x.id) === id);
+          data.motor = before ? before.motor : [];
+          data.alumnos = before ? before.alumnos : [];
+        }
         await c.query(
           `INSERT INTO cuadrillas (id, data, updated_at) VALUES ($1, $2, now())
            ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = now()`, [id, data]);
@@ -320,12 +352,16 @@ async function handleApi(req, res, url, role) {
   if (url === "/api/solicitudes" && m === "POST") {
     need(canEdit);
     const b = await readBody(req);
-    const author = clip(b.author, 60), name = clip(b.name, 80), unit = clip(b.unit, 12), q = int(b.q, 1e6);
-    if (!author || !Names.clean(name).length || q < 1)
-      throw new HttpError(400, "Faltan tu nombre, lo que necesitas o la cantidad.");
+    const name = clip(b.name, 80), unit = clip(b.unit, 12), q = int(b.q, 1e6);
+    if (!Names.clean(name).length || q < 1) throw new HttpError(400, "Faltan lo que necesitas o la cantidad.");
     return send(res, 200, await tx(async (c) => {
-      const cu = (await allData(c, "cuadrillas")).find((x) => x.id === Number(b.cuadrilla));
-      if (!cu) throw new HttpError(400, "Elige tu cuadrilla.");
+      const cuadrillas = await allData(c, "cuadrillas");
+      const yo = whoAmI(req, cuadrillas);
+      if (!yo && role !== "admin") throw new HttpError(403, "Primero elige tu nombre de la lista del equipo motor.");
+      // Sin identidad (solo el administrador): firma como Administrador y elige la cuadrilla.
+      const cu = yo ? cuadrillas.find((x) => x.id === yo.cuadrilla.id) : cuadrillas.find((x) => x.id === Number(b.cuadrilla));
+      if (!cu) throw new HttpError(400, "Elige la cuadrilla.");
+      const author = yo ? yo.name : "Administrador";
       const known = (await allData(c, "catalog")).find((e) => Names.same(e.name, name));
       const etapa = await openStage(c);
       const sol = {
@@ -462,7 +498,7 @@ async function handle(req, res) {
       : send(res, 200, loginPage(""), "text/html; charset=utf-8");
   }
   if (!OPEN && url === "/logout" && req.method === "POST") {
-    res.writeHead(303, { "Set-Cookie": setCookie(req, "", 0), Location: "/" });
+    res.writeHead(303, { "Set-Cookie": [setCookie(req, "", 0), cookie(req, "yo", "", 0)], Location: "/" });
     return res.end();
   }
 
