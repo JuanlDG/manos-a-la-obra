@@ -537,7 +537,7 @@ function alumnosResults() {
     for (const n of c.alumnos) if (norm(n).includes(q)) hits.push({ n, c, role: "" });
     for (const n of c.motor) if (norm(n).includes(q)) hits.push({ n, c, role: "Equipo motor" });
   }
-  if (!hits.length) return `<p class="empty">${q ? "No encontramos a nadie con ese nombre." : "Todavía no hay alumnos registrados. Se agregan dentro de cada cuadrilla, en Personas."}</p>`;
+  if (!hits.length) return `<p class="empty">${q ? "No encontramos a nadie con ese nombre." : (S.cuad.length ? "Todavía no hay alumnos registrados. El administrador los agrega en cada cuadrilla, en la pestaña Personas." : "Todavía no hay cuadrillas. El administrador las crea desde Inicio y agrega a las personas en la pestaña Personas de cada una.")}</p>`;
   hits.sort((a, b) => a.n.localeCompare(b.n, "es"));
   return hits.slice(0, 150).map(h => `<div class="res"><strong>${esc(h.n)}</strong>${h.role ? `<span class="tag">${h.role}</span>` : ""}<p class="where">se encuentra en <a href="#/c/${h.c.id}/personas">${esc(h.c.name)}</a>${h.c.address ? `<br>${esc(h.c.address)}` : ""}${h.c.lead ? `<br>a cargo de ${esc(h.c.lead)}` : ""}</p></div>`).join("");
 }
