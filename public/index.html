@@ -137,7 +137,7 @@ dialog::backdrop{background:rgba(17,24,31,.55)}
 dialog form{display:flex;flex-direction:column;gap:12px}
 dialog label{display:flex;flex-direction:column;gap:4px;font-weight:700}
 dialog label input{font-weight:400}
-dialog .actions{display:flex;gap:8px;justify-content:flex-end}
+dialog .actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* Roles, avisos de ayuda y bodega */
@@ -214,6 +214,8 @@ input[readonly].ghost:hover{border-bottom-color:transparent}
 .etapa{background:var(--card);border:1px solid var(--concrete);border-radius:6px;padding:4px 14px 12px;margin-bottom:10px}
 .etapa summary{cursor:pointer;padding:10px 0;min-height:44px}
 .etapa .row.done .n,.etapa .row.done .t{text-decoration:line-through;opacity:.6}
+.etapa .row{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+.etapa .row .n{flex:1 1 9em;min-width:9em}
 .etapa .row .btn{margin-left:auto}
 .rej{font-size:.9rem}
 </style>
@@ -247,9 +249,21 @@ input[readonly].ghost:hover{border-bottom-color:transparent}
   </form>
 </dialog>
 
+<dialog id="kdlg">
+  <form method="dialog">
+    <h2 class="h-sec" style="margin:0">Elemento nuevo en la bodega</h2>
+    <p><b data-name></b> todavía no está en la bodega central. Para sumarlo, indica qué es:</p>
+    <div class="actions">
+      <button class="btn ghosty" value="">Cancelar</button>
+      <button class="btn" value="tool">Herramienta</button>
+      <button class="btn" value="material">Material</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="/names.js"></script>
 <script>
-const S = { role: null, open: false, cat: [], cuad: [], compras: { etapas: [], solicitudes: [] }, ready: false, q: { alumnos: "", inventario: "" } };
+const S = { role: null, open: false, cat: [], cuad: [], compras: { etapas: [], solicitudes: [] }, ready: false, openEtapa: {}, q: { alumnos: "", inventario: "" } };
 const $ = s => document.querySelector(s);
 const view = $("#view"), dlg = $("#dlg");
 
@@ -442,8 +456,9 @@ function etapaCerrada(e, sols) {
   const rows = groups.map(g => `<li class="row${g.bought ? " done" : ""}"><span class="n">${esc(g.name)}<small>${esc(g.from.join(", "))}</small></span><b class="t">${esc(qtxt(g.q, g.unit))}</b>${isAdmin()
     ? `<button class="btn sm${g.bought ? " ghosty" : ""}" data-act="bought" data-ids="${g.ids.join(",")}" data-v="${g.bought ? "0" : "1"}">${g.bought ? "Deshacer" : "Marcar comprado"}</button>`
     : `<span class="tag ${g.bought ? "st-aprobada" : ""}">${g.bought ? "Comprado" : "Por comprar"}</span>`}</li>`).join("");
-  return `<details class="etapa"><summary><b>${esc(e.name)}</b> · cerrada el ${esc(day(e.closedAt))} · ${todo.length ? plural(todo.length, "solicitud por comprar", "solicitudes por comprar") : "todo comprado"}</summary>
+  return `<details class="etapa" data-eid="${e.id}"${(S.openEtapa[e.id] ?? todo.length > 0) ? " open" : ""}><summary><b>${esc(e.name)}</b> · cerrada el ${esc(day(e.closedAt))} · ${todo.length ? plural(todo.length, "solicitud por comprar", "solicitudes por comprar") : "todo comprado"}</summary>
   <ul>${rows}</ul>
+  ${isAdmin() ? `<p class="mute rej">Al marcar como comprado, la cantidad aprobada se suma a la bodega central. Deshacer la resta.</p>` : ""}
   ${isAdmin() && todo.length ? `<button class="btn" data-act="bought" data-ids="${todo.map(s => s.id).join(",")}" data-v="1">Marcar todo como comprado</button>` : ""}
   ${rej.length ? `<p class="mute rej">Rechazadas: ${rej.map(s => `${esc(s.name)} (${esc(s.cuadrilla.name)})${s.note ? " — " + esc(s.note) : ""}`).join("; ")}</p>` : ""}</details>`;
 }
@@ -565,6 +580,17 @@ function choose(form, e) {
 /* ---------- Acciones ---------- */
 const refocus = sel => { const el = view.querySelector(sel); if (el) el.focus(); };
 
+function askKind(name) {
+  return new Promise(res => {
+    const d = $("#kdlg"); d.querySelector("[data-name]").textContent = "“" + name + "”";
+    const done = v => { d.removeEventListener("click", onClick); d.removeEventListener("cancel", onCancel); if (d.open) d.close(); res(v); };
+    const onClick = e => { const btn = e.target.closest("button"); if (btn) { e.preventDefault(); done(btn.value || null); } };
+    const onCancel = () => done(null); // Esc
+    d.addEventListener("click", onClick); d.addEventListener("cancel", onCancel);
+    d.showModal();
+  });
+}
+
 async function compraAction(b, act) {
   const list = S.compras.solicitudes, ids = (b.dataset.ids || b.dataset.id || "").split(",").map(Number);
   const sol = list.find(x => x.id === ids[0]);
@@ -582,7 +608,24 @@ async function compraAction(b, act) {
     if (r.ok) { S.compras.solicitudes = list.filter(x => x.id !== sol.id); render(); } else load(true);
     return;
   }
-  if (act === "bought") return patch(await call("POST", "/api/solicitudes/comprado", { ids, bought: b.dataset.v === "1" }));
+  if (act === "bought") {
+    const bought = b.dataset.v === "1", kinds = {}, asked = [];
+    if (bought) for (const id of ids) { // lo que aún no existe en la bodega necesita un tipo; se pregunta una vez por elemento
+      const x = list.find(y => y.id === id);
+      if (!x || x.bought || matchItem(x.name)) continue;
+      let g = asked.find(a => Names.same(a.name, x.name));
+      if (!g) {
+        const kind = await askKind(x.name);
+        if (!kind) return;
+        asked.push(g = { name: x.name, kind });
+      }
+      kinds[id] = g.kind;
+    }
+    const r = await call("POST", "/api/solicitudes/comprado", { ids, bought, kinds });
+    patch(r);
+    if (r.ok) { await load(true); toast(bought ? "Se sumó a la bodega central." : "Se restó de la bodega central."); }
+    return;
+  }
   if (act === "closeStage") {
     if (b.getAttribute("aria-disabled")) return toast("Aprueba al menos una solicitud para poder cerrar la etapa.");
     const ab = S.compras.etapas.find(e => e.state === "abierta"), mine = list.filter(x => x.etapa === ab.id);
@@ -635,6 +678,7 @@ document.addEventListener("click", async e => {
 
 document.addEventListener("submit", async e => {
   const f = e.target;
+  if (f.closest("#kdlg")) return; // el diálogo de tipo se cierra solo con el valor del botón
   e.preventDefault();
   const d = new FormData(f);
   if (f.id === "newc") {
@@ -718,6 +762,9 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   if (e.target.name === "kind" && e.target.form?.id === "catadd") e.target.form.dataset.kind = e.target.value;
 });
+document.addEventListener("toggle", e => { // recuerda qué etapas están abiertas al volver a dibujar la pantalla
+  const d = e.target; if (d.dataset?.eid) S.openEtapa[d.dataset.eid] = d.open;
+}, true);
 document.addEventListener("focusin", e => {
   const t = e.target;
   if (t.name === "n" && t.form?.classList.contains("pick") && !t.form.classList.contains("chosen")) suggest(t.form);

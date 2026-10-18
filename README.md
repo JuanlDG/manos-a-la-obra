@@ -45,4 +45,4 @@ Los datos se comparten entre todos los usuarios (tablas `catalog`, `cuadrillas` 
 - El administrador aprueba (puede aprobar una cantidad menor) o rechaza con motivo, y cierra la etapa. Lo aprobado queda como lista de compra de esa etapa, agrupada por elemento; las pendientes pasan a la etapa siguiente.
 - Después, el administrador marca como comprado cada línea o toda la etapa. Las etapas cerradas quedan como registro.
 - Cada persona puede anular sus propias solicitudes mientras estén pendientes (se reconoce por el navegador).
-- Marcar algo como comprado no modifica la bodega central: el administrador lo ingresa en Inventario.
+- Al marcar como comprado, la cantidad aprobada se suma sola a la bodega central. Si el elemento todavía no existe, la app pregunta si es material o herramienta. Deshacer resta lo mismo (no si las cuadrillas ya lo tienen asignado). Si la unidad pedida no coincide con la de la bodega, no suma y hay que ajustarlo a mano en Inventario.

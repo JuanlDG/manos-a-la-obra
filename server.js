@@ -343,8 +343,15 @@ async function handleApi(req, res, url, role) {
     need(role === "admin");
     const b = await readBody(req);
     const ids = (Array.isArray(b.ids) ? b.ids : []).map(Number);
+    // Al marcar como comprado, lo comprado se suma a la bodega central; al deshacer, se resta lo mismo.
+    // Si el elemento todavía no existe en la bodega, hay que decir si es material o herramienta (b.kinds[id]).
+    const kinds = isObj(b.kinds) ? b.kinds : {};
     return send(res, 200, await tx(async (c) => {
       const etapas = await allData(c, "etapas");
+      const catalog = await allData(c, "catalog");
+      const cuadrillas = await allData(c, "cuadrillas");
+      const saveItem = (e) => c.query("UPDATE catalog SET data = $2 WHERE id = $1", [e.id, e]);
+      let newId = Date.now();
       const out = [];
       for (const id of ids) {
         const sol = (await c.query("SELECT data FROM solicitudes WHERE id = $1", [id])).rows[0]?.data;
@@ -352,7 +359,31 @@ async function handleApi(req, res, url, role) {
         const e = etapas.find((x) => x.id === sol.etapa);
         if (sol.status !== "aprobada" || e?.state !== "cerrada")
           throw new HttpError(409, "Solo se marcan como compradas las solicitudes aprobadas de una etapa cerrada.");
-        const next = { ...sol, bought: !!b.bought, boughtAt: b.bought ? new Date().toISOString() : null };
+        const next = { ...sol };
+        if (b.bought && !sol.bought) {
+          let item = catalog.find((x) => Names.same(x.name, sol.name));
+          if (!item) {
+            const kind = kinds[id];
+            if (!KIND[kind]) throw new HttpError(409, `“${sol.name}” no está en la bodega central: indica si es material o herramienta.`);
+            item = { id: newId++, kind, name: sol.name, unit: kind === "material" ? sol.unit : "", total: 0 };
+            catalog.push(item);
+            await c.query("INSERT INTO catalog (id, data) VALUES ($1, $2)", [item.id, item]);
+          } else if (item.kind === "material" && sol.unit && item.unit && Names.clean(sol.unit).join(" ") !== Names.clean(item.unit).join(" "))
+            throw new HttpError(409, `“${sol.name}” se pidió en ${sol.unit} y la bodega lo cuenta en ${item.unit}. Súmalo a mano en Inventario.`);
+          item.total += sol.approvedQ;
+          await saveItem(item);
+          next.stocked = { i: item.id, q: sol.approvedQ };
+          next.bought = true; next.boughtAt = new Date().toISOString();
+        } else if (!b.bought && sol.bought) {
+          const item = sol.stocked && catalog.find((x) => x.id === sol.stocked.i);
+          if (item) {
+            if (item.total - sol.stocked.q < assigned(cuadrillas, item.id))
+              throw new HttpError(409, `No se puede deshacer: “${item.name}” quedaría con menos de lo que ya tienen asignado las cuadrillas.`);
+            item.total -= sol.stocked.q;
+            await saveItem(item);
+          }
+          next.stocked = null; next.bought = false; next.boughtAt = null;
+        }
         await c.query("UPDATE solicitudes SET data = $2 WHERE id = $1", [id, next]);
         out.push(pub(next));
       }
