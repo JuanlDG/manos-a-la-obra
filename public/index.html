@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Manos a la Obra · Trabajos Solidarios</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#faf5ec;--card:#fff;--ink:#2e2118;--mut:#7a6a5b;--line:#eaddc8;--pri:#c2562b;--pri2:#a64622;--ok:#3f7d4e;--warn:#c98a12;--chip:#f4e9d6;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1612;--card:#2a201a;--ink:#f4e9d9;--mut:#b5a493;--line:#40322a;--pri:#e0703f;--pri2:#f08a5c;--ok:#6fb27f;--warn:#e0a93a;--chip:#392b22;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1d1612;--card:#2a201a;--ink:#f4e9d9;--mut:#b5a493;--line:#40322a;--pri:#e0703f;--pri2:#f08a5c;--ok:#6fb27f;--warn:#e0a93a;--chip:#392b22;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+h1{margin:0;font-size:1.6rem;letter-spacing:-.02em}
+h1 span{color:var(--pri)}
+.sub{color:var(--mut);margin:2px 0 0;font-size:.95rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.stat b{display:block;font-size:1.5rem;color:var(--pri)}
+.stat small{color:var(--mut)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.pill{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 14px;border-radius:999px;cursor:pointer;font:inherit;font-size:.9rem}
+.pill.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.newjob{display:flex;flex-wrap:wrap;gap:8px;background:var(--card);border:1px dashed var(--pri);border-radius:14px;padding:12px;margin-bottom:20px}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--pri);outline-offset:1px}
+.newjob input{flex:1 1 180px}
+.btn{background:var(--pri);color:#fff;border:0;border-radius:10px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+.btn:hover{background:var(--pri2)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 2px 8px rgba(80,40,10,.06)}
+.top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.top h2{margin:0;font-size:1.1rem;line-height:1.3}
+.st{font-size:.78rem;font-weight:700;padding:3px 10px;border-radius:999px;color:#fff;white-space:nowrap}
+.s-pend{background:var(--mut)}.s-curso{background:var(--warn)}.s-fin{background:var(--ok)}
+.lead{display:flex;align-items:center;gap:8px}
+.lead label{color:var(--mut);font-size:.85rem;white-space:nowrap}
+.lead input{flex:1;font-weight:600}
+.row2{display:flex;gap:8px;align-items:center}
+.row2 select{flex:1}
+progress{width:100%;height:8px;accent-color:var(--pri)}
+.pg{display:flex;gap:10px;align-items:center;font-size:.85rem;color:var(--mut)}
+.pg input{flex:1;accent-color:var(--pri);padding:0;border:0;background:none}
+.sec h3{margin:0 0 6px;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+ul{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:4px}
+li{display:flex;align-items:center;gap:6px;background:var(--chip);border-radius:10px;padding:5px 8px;font-size:.92rem}
+li .n{flex:1;overflow-wrap:anywhere}
+.q{display:flex;align-items:center;gap:4px}
+.q button,.x{border:0;background:var(--card);color:var(--ink);border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:1rem;line-height:1}
+.q b{min-width:46px;text-align:center;font-variant-numeric:tabular-nums}
+.x{color:var(--mut);background:none}.x:hover{color:var(--pri)}
+.empty{color:var(--mut);font-size:.85rem;font-style:italic}
+.add{display:flex;gap:6px}
+.add input{flex:1;padding:6px 9px;font-size:.9rem}
+.add input.u{flex:0 0 74px}
+.add button{background:var(--chip);color:var(--pri);border:1px solid var(--line);border-radius:10px;padding:0 12px;font-weight:700;cursor:pointer}
+.del{align-self:flex-end;background:none;border:0;color:var(--mut);font-size:.8rem;cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>🧱 Manos a la <span>Obra</span></h1>
+    <p class="sub">Gestión de trabajos solidarios de construcción</p>
+  </div>
+  <button class="pill" id="theme" type="button">🌓 Tema</button>
+</header>
+<section class="stats" id="stats"></section>
+<div class="bar" id="filters"></div>
+<form class="newjob" id="newjob">
+  <input name="name" placeholder="Nuevo trabajo (ej. Pintura – Casa 2)" required>
+  <input name="lead" placeholder="Responsable">
+  <button class="btn" type="submit">+ Agregar trabajo</button>
+</form>
+<main class="grid" id="grid"></main>
+</div>
+<script>
+const KEY="trabajos-solidarios-v1";
+const seed=()=>[
+{id:1,name:"Levantar muros – Casa 1",lead:"María González",status:"curso",pg:55,
+ materials:[{n:"Ladrillos",q:850,u:"un"},{n:"Cemento",q:24,u:"sacos"},{n:"Arena",q:6,u:"m³"}],
+ tools:[{n:"Nivel",q:2},{n:"Carretilla",q:3},{n:"Palas",q:4}],
+ people:["Juan Pérez","Camila Rojas","Pedro Soto","Ana Muñoz"]},
+{id:2,name:"Instalación de techo",lead:"Carlos Fuentes",status:"pend",pg:10,
+ materials:[{n:"Planchas de zinc",q:30,u:"un"},{n:"Vigas de madera",q:40,u:"m"},{n:"Clavos",q:5,u:"kg"}],
+ tools:[{n:"Taladro",q:2},{n:"Martillos",q:6},{n:"Escalera",q:2}],
+ people:["Luis Vargas","Sofía Díaz","Marcos Reyes"]},
+{id:3,name:"Construcción de piso",lead:"Rosa Herrera",status:"fin",pg:100,
+ materials:[{n:"Cemento",q:12,u:"sacos"},{n:"Grava",q:3,u:"m³"}],
+ tools:[{n:"Llana",q:3},{n:"Regla de aluminio",q:2}],
+ people:["Elena Castro","Tomás Núñez"]}];
+let jobs,filter="all";
+try{jobs=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!Array.isArray(jobs))jobs=seed();
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(jobs))}catch(e){}};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ST={pend:"Pendiente",curso:"En curso",fin:"Terminado"};
+const SC={pend:"s-pend",curso:"s-curso",fin:"s-fin"};
+
+function list(j,k){
+  const a=j[k];
+  if(!a.length)return '<div class="empty">Sin registros aún</div>';
+  return '<ul>'+a.map((it,i)=>{
+    if(k==="people")return `<li><span class="n">👤 ${esc(it)}</span><button class="x" data-act="del" data-id="${j.id}" data-k="${k}" data-i="${i}" aria-label="Quitar">×</button></li>`;
+    const u=it.u?" "+esc(it.u):"";
+    return `<li><span class="n">${esc(it.n)}</span><span class="q"><button data-act="qty" data-d="-1" data-id="${j.id}" data-k="${k}" data-i="${i}" aria-label="Menos">−</button><b>${it.q}${u}</b><button data-act="qty" data-d="1" data-id="${j.id}" data-k="${k}" data-i="${i}" aria-label="Más">+</button></span><button class="x" data-act="del" data-id="${j.id}" data-k="${k}" data-i="${i}" aria-label="Quitar">×</button></li>`}).join('')+'</ul>';
+}
+function addForm(j,k,ph){
+  return `<form class="add" data-add="${k}" data-id="${j.id}"><input name="n" placeholder="${ph}" required>${k==="people"?"":`<input name="q" type="number" min="1" value="1" style="flex:0 0 64px" aria-label="Cantidad">`}${k==="materials"?'<input class="u" name="u" placeholder="unidad">':""}<button type="submit" aria-label="Agregar">+</button></form>`;
+}
+function card(j){
+  return `<article class="card">
+  <div class="top"><h2>${esc(j.name)}</h2><span class="st ${SC[j.status]}">${ST[j.status]}</span></div>
+  <div class="lead"><label>👷 Responsable</label><input value="${esc(j.lead||"")}" data-lead="${j.id}" placeholder="Sin asignar"></div>
+  <div class="row2"><select data-status="${j.id}" aria-label="Estado">${Object.keys(ST).map(s=>`<option value="${s}"${s===j.status?" selected":""}>${ST[s]}</option>`).join("")}</select></div>
+  <div class="pg"><span>Avance</span><input type="range" min="0" max="100" step="5" value="${j.pg}" data-pg="${j.id}"><b>${j.pg}%</b></div>
+  <div class="sec"><h3>🧰 Materiales</h3>${list(j,"materials")}${addForm(j,"materials","Material")}</div>
+  <div class="sec"><h3>🔨 Herramientas</h3>${list(j,"tools")}${addForm(j,"tools","Herramienta")}</div>
+  <div class="sec"><h3>🤝 Voluntarios (${j.people.length})</h3>${list(j,"people")}${addForm(j,"people","Nombre del voluntario")}</div>
+  <button class="del" data-act="rm" data-id="${j.id}">Eliminar trabajo</button></article>`;
+}
+function render(){
+  const all=jobs,vol=new Set(all.flatMap(j=>j.people));
+  const avg=all.length?Math.round(all.reduce((s,j)=>s+j.pg,0)/all.length):0;
+  document.getElementById("stats").innerHTML=
+   [[all.length,"Trabajos"],[all.filter(j=>j.status==="curso").length,"En curso"],[vol.size,"Voluntarios"],[avg+"%","Avance general"]]
+   .map(([b,s])=>`<div class="stat"><b>${b}</b><small>${s}</small></div>`).join("");
+  document.getElementById("filters").innerHTML=[["all","Todos"],...Object.entries(ST)]
+   .map(([k,v])=>`<button class="pill${filter===k?" on":""}" data-f="${k}">${v}</button>`).join("");
+  const sh=all.filter(j=>filter==="all"||j.status===filter);
+  document.getElementById("grid").innerHTML=sh.length?sh.map(card).join(""):'<p class="empty">No hay trabajos en esta categoría.</p>';
+}
+const get=id=>jobs.find(j=>j.id==id);
+const upd=()=>{save();render()};
+
+document.addEventListener("click",e=>{
+  const f=e.target.closest("[data-f]");if(f){filter=f.dataset.f;return render()}
+  const b=e.target.closest("[data-act]");if(!b)return;
+  const j=get(b.dataset.id),k=b.dataset.k,i=+b.dataset.i;
+  if(b.dataset.act==="del")j[k].splice(i,1);
+  if(b.dataset.act==="qty")j[k][i].q=Math.max(0,j[k][i].q+ +b.dataset.d);
+  if(b.dataset.act==="rm"){if(!confirm("¿Eliminar este trabajo?"))return;jobs=jobs.filter(x=>x!==j)}
+  upd();
+});
+document.addEventListener("submit",e=>{
+  e.preventDefault();const f=e.target,d=new FormData(f);
+  if(f.id==="newjob"){
+    jobs.push({id:Date.now(),name:d.get("name").trim(),lead:d.get("lead").trim(),status:"pend",pg:0,materials:[],tools:[],people:[]});
+    f.reset();return upd();
+  }
+  const j=get(f.dataset.id),k=f.dataset.add,n=d.get("n").trim();if(!n)return;
+  if(k==="people")j.people.push(n);
+  else j[k].push({n,q:+d.get("q")||1,...(k==="materials"?{u:(d.get("u")||"").trim()}:{})});
+  upd();
+});
+document.addEventListener("change",e=>{
+  const t=e.target;
+  if(t.dataset.lead){get(t.dataset.lead).lead=t.value.trim();upd()}
+  if(t.dataset.status){const j=get(t.dataset.status);j.status=t.value;if(t.value==="fin")j.pg=100;upd()}
+  if(t.dataset.pg){const j=get(t.dataset.pg);j.pg=+t.value;if(j.pg===100)j.status="fin";else if(j.pg>0&&j.status==="pend")j.status="curso";upd()}
+});
+document.getElementById("theme").onclick=()=>{
+  const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;
+  r.dataset.theme=dark?"light":"dark";
+};
+render();
+</script>
+</body>
+</html>

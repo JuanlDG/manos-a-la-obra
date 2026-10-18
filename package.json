@@ -1,0 +1,14 @@
+{
+  "name": "manos-a-la-obra",
+  "version": "1.0.0",
+  "description": "Gestión de materiales y personas en misiones solidarias",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
