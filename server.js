@@ -25,6 +25,9 @@ const pool = new Pool({
     : false,
 });
 
+// Si Postgres se reinicia, el pool avisa con un evento "error"; sin este manejador tumba el proceso.
+pool.on("error", (e) => console.error("Error en conexión idle de Postgres:", e.message));
+
 const send = (res, code, body, type = "application/json") => {
   res.writeHead(code, { "Content-Type": type });
   res.end(type === "application/json" ? JSON.stringify(body) : body);
