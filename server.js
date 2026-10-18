@@ -5,6 +5,7 @@ const { Pool } = require("pg");
 
 const PORT = process.env.PORT || 3000;
 const FILE = path.join(__dirname, "public", "index.html");
+const PARROQUIA_ID = 1;
 
 if (!process.env.DATABASE_URL) {
   console.error("Falta la variable DATABASE_URL (conectar Postgres en Railway).");
@@ -43,34 +44,66 @@ const readBody = (req) =>
     });
   });
 
+const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+const clip = (v, n) => String(v ?? "").trim().slice(0, n);
+
 async function handle(req, res) {
   const url = req.url.split("?")[0];
 
   if (url === "/health") return send(res, 200, "ok", "text/plain");
 
-  if (url === "/api/jobs" && req.method === "GET") {
-    const { rows } = await pool.query("SELECT data FROM jobs ORDER BY id");
+  // ---- Cuadrillas (la parroquia es la cuadrilla con id 1: bodega central)
+  if (url === "/api/cuadrillas" && req.method === "GET") {
+    const { rows } = await pool.query("SELECT data FROM cuadrillas ORDER BY id");
     return send(res, 200, rows.map((r) => r.data));
   }
 
-  const m = url.match(/^\/api\/jobs\/(\d+)$/);
+  let m = url.match(/^\/api\/cuadrillas\/(\d+)$/);
   if (m) {
     const id = m[1];
     if (req.method === "PUT") {
-      const job = await readBody(req);
-      if (!job || typeof job !== "object" || String(job.id) !== id)
-        return send(res, 400, { error: "Trabajo inválido" });
+      const c = await readBody(req);
+      if (!isObj(c) || String(c.id) !== id)
+        return send(res, 400, { error: "Cuadrilla inválida" });
       await pool.query(
-        `INSERT INTO jobs (id, data, updated_at) VALUES ($1, $2, now())
+        `INSERT INTO cuadrillas (id, data, updated_at) VALUES ($1, $2, now())
          ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = now()`,
-        [id, job]
+        [id, c]
       );
       return send(res, 200, { ok: true });
     }
     if (req.method === "DELETE") {
-      await pool.query("DELETE FROM jobs WHERE id = $1", [id]);
+      if (Number(id) === PARROQUIA_ID)
+        return send(res, 400, { error: "La parroquia no se puede eliminar" });
+      await pool.query("DELETE FROM cuadrillas WHERE id = $1", [id]);
       return send(res, 200, { ok: true });
     }
+  }
+
+  // ---- Avisos
+  if (url === "/api/avisos" && req.method === "GET") {
+    const { rows } = await pool.query(
+      "SELECT data FROM avisos ORDER BY id DESC LIMIT 200"
+    );
+    return send(res, 200, rows.map((r) => r.data));
+  }
+  if (url === "/api/avisos" && req.method === "POST") {
+    const b = await readBody(req);
+    const author = clip(b.author, 60);
+    const text = clip(b.text, 1000);
+    if (!author || !text)
+      return send(res, 400, { error: "Faltan el nombre o el mensaje" });
+    const aviso = { id: Date.now(), author, text, ts: new Date().toISOString() };
+    await pool.query("INSERT INTO avisos (id, data) VALUES ($1, $2)", [
+      aviso.id,
+      aviso,
+    ]);
+    return send(res, 200, aviso);
+  }
+  m = url.match(/^\/api\/avisos\/(\d+)$/);
+  if (m && req.method === "DELETE") {
+    await pool.query("DELETE FROM avisos WHERE id = $1", [m[1]]);
+    return send(res, 200, { ok: true });
   }
 
   if (url === "/" || url === "/index.html") {
@@ -80,11 +113,32 @@ async function handle(req, res) {
 }
 
 (async () => {
-  await pool.query(`CREATE TABLE IF NOT EXISTS jobs (
+  await pool.query(`CREATE TABLE IF NOT EXISTS cuadrillas (
     id BIGINT PRIMARY KEY,
     data JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS avisos (
+    id BIGINT PRIMARY KEY,
+    data JSONB NOT NULL
+  )`);
+  await pool.query(
+    `INSERT INTO cuadrillas (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+    [
+      PARROQUIA_ID,
+      {
+        id: PARROQUIA_ID,
+        name: "Materiales parroquia",
+        address: "",
+        lead: "",
+        parroquia: true,
+        motor: [],
+        alumnos: [],
+        materials: [],
+        tools: [],
+      },
+    ]
+  );
   http
     .createServer((req, res) =>
       handle(req, res).catch((e) => {
