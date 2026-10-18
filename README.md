@@ -14,7 +14,27 @@ Abrir http://localhost:3000. La tabla `jobs` se crea sola al iniciar.
 
 1. New Project → Deploy from GitHub repo → este repositorio.
 2. En el proyecto: New → Database → Add PostgreSQL.
-3. En el servicio de la app → Variables → `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` y `APP_PASSWORD` = la contraseña compartida del equipo.
+3. En el servicio de la app → Variables (todas en el servicio `app`, no en Postgres):
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`
+   - `ADMIN_PASSWORD` = contraseña del administrador
+   - `APP_PASSWORD` = contraseña del equipo (rol usuario)
 4. Settings → Networking → Generate Domain.
 
-Los datos se comparten entre todos los usuarios (tablas `cuadrillas` y `avisos`; la cuadrilla con id 1 es la bodega de la parroquia y se crea sola). Con `APP_PASSWORD` definida, la app pide esa contraseña (una sola, compartida; la sesión dura 30 días). Si no se define, queda abierta a cualquiera con la URL.
+## Roles
+
+| Rol | Cómo entra | Qué puede hacer |
+|---|---|---|
+| Administrador | `ADMIN_PASSWORD` | Todo, incluido cambiar la bodega central (inventario). |
+| Usuario | `APP_PASSWORD` | Editar cuadrillas, personas y avisos, usando solo lo que ya está en la bodega. |
+| Solo lectura | “Entrar sin contraseña” | Ver todo, no cambiar nada. |
+
+Sin `ADMIN_PASSWORD` nadie puede cambiar la bodega. Si no se define ninguna contraseña (por ejemplo en local), la app queda abierta y todos son administradores.
+
+## Cómo funciona el inventario
+
+- **Bodega central**: todo el inventario (herramientas y materiales con su total). Se carga en la sección Inventario, solo el administrador.
+- **Cuadrillas**: usan elementos de la bodega, elegidos de una lista que se acota al escribir. No pueden pedir más de lo que sobra.
+- **Parroquia**: lo que sobra = total de la bodega menos lo asignado a cuadrillas. Se calcula, no se carga.
+- Un elemento es o material o herramienta, nunca los dos. Singular y plural son el mismo elemento (taladro / taladros, pincel / pinceles).
+
+Los datos se comparten entre todos los usuarios (tablas `catalog`, `cuadrillas` y `avisos`). Al iniciar, el servidor convierte automáticamente los datos de la versión anterior (materiales escritos a mano) a este formato.

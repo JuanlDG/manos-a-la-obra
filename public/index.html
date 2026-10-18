@@ -139,12 +139,56 @@ dialog label{display:flex;flex-direction:column;gap:4px;font-weight:700}
 dialog label input{font-weight:400}
 dialog .actions{display:flex;gap:8px;justify-content:flex-end}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Roles, avisos de ayuda y bodega */
+.who{display:flex;justify-content:flex-end;align-items:center;gap:8px;font-size:.9rem;color:var(--mute);min-height:32px}
+.who[hidden]{display:none}
+.who form{display:inline}
+.linkbtn{background:none;border:0;padding:6px 2px;color:var(--ink);text-decoration:underline;cursor:pointer}
+.who b{color:var(--ink)}
+#toast{position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:10;width:min(92vw,520px);background:var(--ink);color:var(--paper);padding:12px 16px;border-radius:6px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.3)}
+#toast[hidden]{display:none}
+.note{background:var(--tint);border-left:6px solid var(--concrete);padding:10px 14px;border-radius:0 6px 6px 0;margin:10px 0}
+.h-sec.big{font-size:2.6rem;margin:14px 0 4px}
+.hint{grid-column:1/-1;margin:0;min-height:1.4em;color:var(--mute);font-size:.92rem}
+.add.pick{grid-template-columns:1fr 84px auto}
+.add.pick .sugg,.add.pick .hint{grid-column:1/-1}
+.add.pick input[name=n]{grid-column:auto}
+@media (max-width:520px){.add.pick input[name=n]{grid-column:1/-1}.add.pick{grid-template-columns:1fr auto}}
+.sugg{display:none;flex-direction:column;gap:4px;margin-bottom:2px}
+.add.pick:focus-within:not(.chosen) .sugg{display:flex}
+.add.pick.chosen input[name=n]{background:var(--tint);font-weight:700}
+.opt{display:flex;justify-content:space-between;align-items:baseline;gap:12px;text-align:left;background:var(--card);border:1px solid var(--concrete);border-radius:6px;padding:10px 12px;min-height:44px;cursor:pointer}
+.opt:hover,.opt:focus-visible{background:var(--tape);color:#11181F;border-color:#11181F}
+.opt small{color:inherit;opacity:.8;white-space:nowrap}
+.opt[aria-disabled=true]{opacity:.55}
+.more{margin:2px 0;color:var(--mute);font-size:.92rem}
+.sq[aria-disabled=true]{opacity:.35;cursor:not-allowed}
+.sq[aria-disabled=true]:hover{background:var(--card);color:inherit}
+.row .n small{display:block;color:var(--mute);font-size:.82rem}
+.row .n a{text-decoration:none;font-weight:700}
+.row .n a:hover{text-decoration:underline}
+.row .u{min-width:2ch;color:var(--mute)}
+.tot{width:84px;text-align:right;font-variant-numeric:tabular-nums}
+.catadd{background:var(--card);border:2px solid var(--ink);border-radius:4px;padding:14px;margin:16px 0 22px}
+.seg{border:0;padding:0;margin:0 0 10px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.seg legend{font-weight:700;margin-bottom:6px;padding:0}
+.seg label{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:2px solid var(--concrete);border-radius:6px;cursor:pointer}
+.seg label:has(input:checked){border-color:var(--ink);background:var(--tape);color:#11181F;font-weight:700}
+.seg input{accent-color:#11181F}
+.add3{display:grid;grid-template-columns:1fr 90px 96px auto;gap:6px}
+.catadd:not([data-kind=material]) input[name=unit]{display:none}
+.catadd:not([data-kind=material]) .add3{grid-template-columns:1fr 90px auto}
+@media (max-width:520px){.add3,.catadd:not([data-kind=material]) .add3{grid-template-columns:1fr 1fr}.add3 input[name=name]{grid-column:1/-1}.add3 .btn{grid-column:1/-1}}
+input[readonly].ghost{cursor:default}
+input[readonly].ghost:hover{border-bottom-color:transparent}
 </style>
 </head>
 <body>
 <div id="status" role="alert" hidden>Sin conexión con el servidor. Los últimos cambios podrían no haberse guardado.</div>
 <div class="wrap">
   <header class="top">
+    <div class="who" id="who" hidden><span>Sesión: <b id="who-label"></b></span><form method="post" action="/logout"><button class="linkbtn" id="logout" type="submit">Salir</button></form></div>
     <a class="brand" href="#/">Construcción Misiones</a>
     <nav class="nav" aria-label="Secciones">
       <a href="#/avisos" data-nav="avisos">Avisos</a>
@@ -152,6 +196,7 @@ dialog .actions{display:flex;gap:8px;justify-content:flex-end}
       <a href="#/inventario" data-nav="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Inventario</a>
     </nav>
   </header>
+  <div id="toast" role="status" hidden></div>
   <main id="view" aria-live="polite"><p class="empty">Cargando…</p></main>
 </div>
 
@@ -168,9 +213,9 @@ dialog .actions{display:flex;gap:8px;justify-content:flex-end}
   </form>
 </dialog>
 
+<script src="/names.js"></script>
 <script>
-const PARROQUIA = 1;
-const S = { cuad: [], avisos: [], ready: false, q: { alumnos: "", inventario: "" } };
+const S = { role: null, open: false, cat: [], cuad: [], avisos: [], ready: false, q: { alumnos: "", inventario: "" } };
 const $ = s => document.querySelector(s);
 const view = $("#view"), dlg = $("#dlg");
 
@@ -178,74 +223,121 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
 const qtxt = (q, u) => q + (u ? " " + u : "");
-const cuad = id => S.cuad.find(c => c.id == id);
-const regulares = () => S.cuad.filter(c => !c.parroquia);
+const byName = (a, b) => a.name.localeCompare(b.name, "es");
 const BACK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3 5 12l12 9z"/></svg>';
+const LISTS = {
+  materials: { kind: "material", title: "Materiales", one: "material", all: "materiales" },
+  tools: { kind: "tool", title: "Herramientas", one: "herramienta", all: "herramientas" },
+};
+const KIND_LABEL = { material: "material", tool: "herramienta" };
+const ROLE_LABEL = { admin: "Administrador", usuario: "Usuario", visitante: "Solo lectura" };
+
+const isAdmin = () => S.role === "admin";
+const canEdit = () => S.role === "admin" || S.role === "usuario";
+
+const cuad = id => S.cuad.find(c => c.id == id);
+const item = id => S.cat.find(e => e.id == id);
+// Lo asignado a cuadrillas; lo que no está asignado es lo que sobra, o sea la parroquia.
+const usedBy = id => S.cuad.reduce((n, c) => n + [...c.materials, ...c.tools].filter(x => x.i == id).reduce((s, x) => s + x.q, 0), 0);
+const avail = e => e.total - usedBy(e.id);
 
 /* ---------- Conexión con el servidor ---------- */
 const status = ok => { $("#status").hidden = ok; };
-async function call(method, url, body) {
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 7000);
+}
+// Devuelve { ok, status, data }. Los errores de reglas (400, 403, 409) traen un mensaje que se muestra tal cual.
+async function call(method, url, body, quiet) {
   try {
     const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-    if (r.status === 401) { location.reload(); return null; }
-    if (!r.ok) throw new Error(r.status);
+    if (r.status === 401) { location.reload(); return { ok: false, status: 401 }; }
+    let data = null; try { data = await r.json(); } catch {}
     status(true);
-    return r.json();
-  } catch (e) { console.error(e); status(false); return null; }
+    if (!r.ok && !quiet) toast((data && data.error) || "No se pudo completar la acción.");
+    return { ok: r.ok, status: r.status, data };
+  } catch (e) { console.error(e); status(false); return { ok: false, status: 0 }; }
 }
-// Un guardado a la vez por cuadrilla, siempre con el último estado.
+// Un guardado a la vez por cuadrilla, siempre con el último estado. Si el servidor lo rechaza, se vuelve a leer todo.
 const chain = {};
 function save(c) {
-  chain[c.id] = (chain[c.id] || Promise.resolve()).then(() => call("PUT", "/api/cuadrillas/" + c.id, cuad(c.id) || c));
+  chain[c.id] = (chain[c.id] || Promise.resolve()).then(async () => {
+    const r = await call("PUT", "/api/cuadrillas/" + c.id, cuad(c.id) || c);
+    if (!r.ok && r.status) load(true);
+  });
 }
 async function load(force) {
-  const [a, b] = await Promise.all([call("GET", "/api/cuadrillas"), call("GET", "/api/avisos")]);
-  if (!a || !b) return;
-  const changed = JSON.stringify(a) !== JSON.stringify(S.cuad) || JSON.stringify(b) !== JSON.stringify(S.avisos);
-  S.cuad = a; S.avisos = b;
+  const [a, b, k] = await Promise.all([call("GET", "/api/cuadrillas", undefined, true), call("GET", "/api/avisos", undefined, true), call("GET", "/api/catalog", undefined, true)]);
+  if (!a.ok || !b.ok || !k.ok) return;
+  const changed = JSON.stringify([a.data, b.data, k.data]) !== JSON.stringify([S.cuad, S.avisos, S.cat]);
+  S.cuad = a.data.filter(c => !c.parroquia); S.avisos = b.data; S.cat = k.data;
   if (changed || !S.ready || force) { S.ready = true; render(); }
 }
 
 /* ---------- Vistas ---------- */
 function home() {
-  const par = S.cuad.find(c => c.parroquia);
-  const cards = [];
-  if (par) cards.push(`<a class="card bodega" href="#/c/${par.id}"><h2>${esc(par.name)}</h2><div class="addr">Bodega central</div><div class="plate" role="img" aria-label="Bodega"></div><div class="counts">${plural(par.materials.length, "material", "materiales")} · ${plural(par.tools.length, "herramienta", "herramientas")}</div></a>`);
-  for (const c of regulares()) {
+  const nt = S.cat.filter(e => e.kind === "tool" && avail(e) > 0).length;
+  const nm = S.cat.filter(e => e.kind === "material" && avail(e) > 0).length;
+  const cards = [`<a class="card bodega" href="#/parroquia"><h2>Parroquia</h2><div class="addr">Lo que sobra en bodega</div><div class="plate" role="img" aria-label="Parroquia"></div><div class="counts">${plural(nt, "herramienta", "herramientas")} · ${plural(nm, "material", "materiales")} con saldo</div></a>`];
+  for (const c of S.cuad) {
     const n = (c.name.match(/\d+/) || [c.name.trim()[0] || "?"])[0];
     cards.push(`<a class="card" href="#/c/${c.id}"><h2>${esc(c.name)}</h2><div class="addr">${esc(c.address)}</div><div class="plate" aria-hidden="true">${esc(n)}</div><div class="counts">${plural(c.alumnos.length, "alumno", "alumnos")} · ${plural(c.motor.length, "del equipo", "del equipo")}</div></a>`);
   }
-  cards.push(`<button class="card new" type="button" data-act="newc"><span aria-hidden="true">+</span>Nueva cuadrilla</button>`);
-  const hint = regulares().length ? "" : '<p class="empty">Todavía no hay cuadrillas. Crea la primera con “Nueva cuadrilla”.</p>';
+  if (canEdit()) cards.push(`<button class="card new" type="button" data-act="newc"><span aria-hidden="true">+</span>Nueva cuadrilla</button>`);
+  const hint = S.cuad.length ? "" : `<p class="empty">Todavía no hay cuadrillas.${canEdit() ? " Crea la primera con “Nueva cuadrilla”." : ""}</p>`;
   return `<div class="cards">${cards.join("")}</div>${hint}`;
 }
 
-function qtyList(c, k) {
-  const a = c[k];
-  if (!a.length) return `<p class="empty">${k === "materials" ? "Sin materiales todavía." : "Sin herramientas todavía."}</p>`;
-  return "<ul>" + a.map((it, i) => `<li class="row"><span class="n">${esc(it.n)}</span><span class="qty"><button class="sq" data-act="qty" data-d="-1" data-id="${c.id}" data-k="${k}" data-i="${i}" aria-label="Quitar uno de ${esc(it.n)}">−</button><b>${esc(qtxt(it.q, it.u))}</b><button class="sq" data-act="qty" data-d="1" data-id="${c.id}" data-k="${k}" data-i="${i}" aria-label="Sumar uno a ${esc(it.n)}">+</button></span><button class="sq x" data-act="del" data-id="${c.id}" data-k="${k}" data-i="${i}" aria-label="Quitar ${esc(it.n)}">×</button></li>`).join("") + "</ul>";
+function parroquia() {
+  const sec = k => {
+    const a = S.cat.filter(e => e.kind === LISTS[k].kind && avail(e) > 0).sort(byName);
+    return `<h2 class="h-sec">${LISTS[k].title}</h2>` + (a.length
+      ? "<ul>" + a.map(e => `<li><a class="row" href="#/inventario/${e.id}"><span class="n">${esc(e.name)}</span><span class="t">${esc(qtxt(avail(e), e.unit))}</span></a></li>`).join("") + "</ul>"
+      : `<p class="empty">No sobra ningún elemento de esta lista.</p>`);
+  };
+  return `<a class="back" href="#/" aria-label="Volver a las cuadrillas">${BACK}</a><h1 class="h-sec big">Parroquia</h1><p class="mute">Lo que está en la bodega central y no está asignado a ninguna cuadrilla.</p>${sec("tools")}${sec("materials")}`;
 }
-const addQty = (c, k, ph, cls, unit) => `<form class="add ${cls}" data-add="${k}" data-id="${c.id}"><input name="n" placeholder="${ph}" required maxlength="60" aria-label="${ph}"><input name="q" type="number" min="1" value="1" inputmode="numeric" aria-label="Cantidad">${unit ? '<input name="u" placeholder="unidad" maxlength="12" aria-label="Unidad">' : ""}<button class="btn" type="submit">Agregar</button></form>`;
+
+function qtyList(c, k) {
+  const a = c[k], ed = canEdit();
+  if (!a.length) return `<p class="empty">Esta cuadrilla no tiene ${LISTS[k].all} asignad${k === "tools" ? "as" : "os"}.</p>`;
+  return "<ul>" + a.map(it => {
+    const e = item(it.i); if (!e) return "";
+    const q = ed
+      ? `<span class="qty"><button class="sq" data-act="qty" data-d="-1" data-id="${c.id}" data-k="${k}" data-i="${e.id}" aria-label="Quitar uno de ${esc(e.name)}">−</button><b>${esc(qtxt(it.q, e.unit))}</b><button class="sq" data-act="qty" data-d="1" data-id="${c.id}" data-k="${k}" data-i="${e.id}" aria-label="Sumar uno a ${esc(e.name)}"${avail(e) < 1 ? ' aria-disabled="true"' : ""}>+</button></span><button class="sq x" data-act="del" data-id="${c.id}" data-k="${k}" data-i="${e.id}" aria-label="Devolver ${esc(e.name)} a la parroquia">×</button>`
+      : `<b class="t">${esc(qtxt(it.q, e.unit))}</b>`;
+    return `<li class="row"><span class="n">${esc(e.name)}</span>${q}</li>`;
+  }).join("") + "</ul>";
+}
+// Solo se pueden agregar elementos que ya están en la bodega central: se elige de una lista que se acota al escribir.
+const addPick = (c, k) => canEdit() ? `<form class="add pick" data-add="${k}" data-id="${c.id}" autocomplete="off">
+  <div class="sugg" aria-label="Opciones de la bodega central"></div>
+  <input name="n" placeholder="Buscar ${LISTS[k].one} de la bodega" aria-label="Buscar ${LISTS[k].one} de la bodega" maxlength="60">
+  <input name="i" type="hidden">
+  <input name="q" type="number" min="1" value="1" inputmode="numeric" aria-label="Cantidad">
+  <button class="btn" type="submit">Agregar</button>
+  <p class="hint" role="status"></p></form>` : "";
 
 function chipList(c, k) {
-  const a = c[k];
+  const a = c[k], ed = canEdit();
   if (!a.length) return `<p class="empty">Nadie registrado todavía.</p>`;
-  return '<div class="chips">' + a.map((n, i) => `<div class="chip"><span>${esc(n)}</span><button class="sq x" data-act="del" data-id="${c.id}" data-k="${k}" data-i="${i}" aria-label="Quitar a ${esc(n)}">×</button></div>`).join("") + "</div>";
+  return '<div class="chips">' + a.map((n, i) => `<div class="chip"><span>${esc(n)}</span>${ed ? `<button class="sq x" data-act="del" data-id="${c.id}" data-k="${k}" data-i="${i}" aria-label="Quitar a ${esc(n)}">×</button>` : ""}</div>`).join("") + "</div>";
 }
-const addPerson = (c, k) => `<form class="add one" data-add="${k}" data-id="${c.id}"><input name="n" placeholder="Nombre" required maxlength="60" aria-label="Nombre"><button class="btn" type="submit">Agregar</button></form>`;
+const addPerson = (c, k) => canEdit() ? `<form class="add one" data-add="${k}" data-id="${c.id}"><input name="n" placeholder="Nombre" required maxlength="60" aria-label="Nombre"><button class="btn" type="submit">Agregar</button></form>` : "";
 
 function detail(id, tab) {
-  const c = cuad(id);
+  const c = cuad(id), ro = canEdit() ? "" : " readonly";
   if (!c) return `<a class="back" href="#/" aria-label="Volver a las cuadrillas">${BACK}</a><p class="empty">Esa cuadrilla ya no existe.</p>`;
-  if (c.parroquia) tab = "materiales";
-  const tabs = c.parroquia ? "" : `<nav class="tabs" aria-label="Contenido de la cuadrilla"><a href="#/c/${c.id}/materiales"${tab === "materiales" ? ' aria-current="page"' : ""}>Materiales</a><a href="#/c/${c.id}/personas"${tab === "personas" ? ' aria-current="page"' : ""}>Personas</a></nav>`;
+  const tabs = `<nav class="tabs" aria-label="Contenido de la cuadrilla"><a href="#/c/${c.id}/materiales"${tab === "materiales" ? ' aria-current="page"' : ""}>Materiales</a><a href="#/c/${c.id}/personas"${tab === "personas" ? ' aria-current="page"' : ""}>Personas</a></nav>`;
+  const list = k => `<h2 class="h-sec">${LISTS[k].title}</h2>${qtyList(c, k)}${addPick(c, k)}`;
   const body = tab === "personas"
     ? `<h2 class="h-sec">Equipo motor</h2>${chipList(c, "motor")}${addPerson(c, "motor")}<h2 class="h-sec">Alumnos</h2>${chipList(c, "alumnos")}${addPerson(c, "alumnos")}`
-    : `<h2 class="h-sec">Materiales</h2>${qtyList(c, "materials")}${addQty(c, "materials", "Material", "", true)}<h2 class="h-sec">Herramientas</h2>${qtyList(c, "tools")}${addQty(c, "tools", "Herramienta", "two", false)}`;
-  const del = c.parroquia ? "" : `<button class="link-danger" data-act="rmc" data-id="${c.id}">Eliminar cuadrilla</button>`;
+    : `${list("materials")}${list("tools")}`;
+  const del = canEdit() ? `<button class="link-danger" data-act="rmc" data-id="${c.id}">Eliminar cuadrilla</button>` : "";
   return `<a class="back" href="#/" aria-label="Volver a las cuadrillas">${BACK}</a>
-  <div class="head"><input class="ghost title" data-f="name" data-id="${c.id}" value="${esc(c.name)}" aria-label="Nombre de la cuadrilla" maxlength="60"><input class="ghost sub" data-f="address" data-id="${c.id}" value="${esc(c.address)}" placeholder="Agregar dirección" aria-label="Dirección de la obra" maxlength="120"></div>
-  ${c.parroquia ? "" : `<div class="lead"><label for="lead">A cargo de</label><input class="ghost" id="lead" data-f="lead" data-id="${c.id}" value="${esc(c.lead)}" placeholder="Sin asignar" maxlength="60"></div>`}
+  <div class="head"><input class="ghost title" data-f="name" data-id="${c.id}" value="${esc(c.name)}" aria-label="Nombre de la cuadrilla" maxlength="60"${ro}><input class="ghost sub" data-f="address" data-id="${c.id}" value="${esc(c.address)}" placeholder="${canEdit() ? "Agregar dirección" : ""}" aria-label="Dirección de la obra" maxlength="120"${ro}></div>
+  <div class="lead"><label for="lead">A cargo de</label><input class="ghost" id="lead" data-f="lead" data-id="${c.id}" value="${esc(c.lead)}" placeholder="${canEdit() ? "Sin asignar" : ""}" maxlength="60"${ro}></div>
   ${tabs}${body}${del}`;
 }
 
@@ -253,80 +345,123 @@ const when = iso => { try { return new Date(iso).toLocaleString("es-CL", { day: 
 function avisos() {
   let autor = ""; try { autor = localStorage.getItem("autor") || ""; } catch {}
   const list = S.avisos.length
-    ? S.avisos.map(a => `<article class="aviso"><strong>${esc(a.author)}:</strong><p>${esc(a.text)}</p><div class="meta"><span>${esc(when(a.ts))}</span><button data-act="delaviso" data-id="${a.id}">Borrar</button></div></article>`).join("")
-    : '<p class="empty">Todavía no hay avisos. Escribe el primero, por ejemplo: “Alguien tiene el nivel grande”.</p>';
-  return `<form class="post" id="post"><input class="who" name="author" placeholder="Tu nombre" required maxlength="60" aria-label="Tu nombre" value="${esc(autor)}"><textarea name="text" placeholder="¿Qué necesitas avisar?" required maxlength="1000" aria-label="Mensaje"></textarea><button class="btn" type="submit" style="align-self:flex-start">Publicar aviso</button></form>${list}`;
+    ? S.avisos.map(a => `<article class="aviso"><strong>${esc(a.author)}:</strong><p>${esc(a.text)}</p><div class="meta"><span>${esc(when(a.ts))}</span>${canEdit() ? `<button data-act="delaviso" data-id="${a.id}">Borrar</button>` : ""}</div></article>`).join("")
+    : '<p class="empty">Todavía no hay avisos.</p>';
+  const form = canEdit()
+    ? `<form class="post" id="post"><input class="who-name" name="author" placeholder="Tu nombre" required maxlength="60" aria-label="Tu nombre" value="${esc(autor)}"><textarea name="text" placeholder="¿Qué necesitas avisar? Por ejemplo: alguien tiene el nivel grande" required maxlength="1000" aria-label="Mensaje"></textarea><button class="btn" type="submit" style="align-self:flex-start">Publicar aviso</button></form>`
+    : `<p class="note">Estás en modo de solo lectura: puedes ver los avisos, pero no publicar.</p>`;
+  return form + list;
 }
 
 function alumnosResults() {
   const q = norm(S.q.alumnos), hits = [];
-  for (const c of S.cuad) if (!c.parroquia) {
+  for (const c of S.cuad) {
     for (const n of c.alumnos) if (norm(n).includes(q)) hits.push({ n, c, role: "" });
     for (const n of c.motor) if (norm(n).includes(q)) hits.push({ n, c, role: "Equipo motor" });
   }
-  if (!hits.length) return `<p class="empty">${q ? "No encontramos a nadie con ese nombre." : "Todavía no hay alumnos registrados. Agrégalos dentro de cada cuadrilla, en Personas."}</p>`;
+  if (!hits.length) return `<p class="empty">${q ? "No encontramos a nadie con ese nombre." : "Todavía no hay alumnos registrados. Se agregan dentro de cada cuadrilla, en Personas."}</p>`;
   hits.sort((a, b) => a.n.localeCompare(b.n, "es"));
   return hits.slice(0, 150).map(h => `<div class="res"><strong>${esc(h.n)}</strong>${h.role ? `<span class="tag">${h.role}</span>` : ""}<p class="where">se encuentra en <a href="#/c/${h.c.id}/personas">${esc(h.c.name)}</a>${h.c.address ? `<br>${esc(h.c.address)}` : ""}${h.c.lead ? `<br>a cargo de ${esc(h.c.lead)}` : ""}</p></div>`).join("");
 }
 const alumnos = () => `<input class="search" type="search" data-q="alumnos" placeholder="Buscar alumno por nombre" aria-label="Buscar alumno por nombre" value="${esc(S.q.alumnos)}"><div id="results" aria-live="polite">${alumnosResults()}</div>`;
 
-function inventory() {
-  const m = new Map();
-  for (const c of S.cuad) for (const kind of ["materials", "tools"]) for (const it of c[kind]) {
-    const key = `${kind}:${norm(it.n)}:${norm(it.u || "")}`;
-    const e = m.get(key) || { key, kind, n: it.n, u: it.u || "", total: 0, where: new Map() };
-    e.total += it.q; e.where.set(c.id, (e.where.get(c.id) || 0) + it.q);
-    m.set(key, e);
-  }
-  return m;
-}
+/* Bodega central: todo el inventario. Solo el administrador lo cambia. */
 function inventarioResults() {
-  const q = norm(S.q.inventario), inv = [...inventory().values()].filter(e => norm(e.n).includes(q));
-  const col = (kind, title) => {
-    const a = inv.filter(e => e.kind === kind).sort((x, y) => x.n.localeCompare(y.n, "es"));
-    return `<section><h2 class="h-sec">${title}</h2>${a.length ? "<ul>" + a.map(e => `<li><a class="row" href="#/inventario/${encodeURIComponent(e.key)}"><span class="n">${esc(e.n)}</span><span class="t">${esc(qtxt(e.total, e.u))}</span></a></li>`).join("") + "</ul>" : `<p class="empty">${q ? "Nada con ese nombre." : "Sin registros todavía."}</p>`}</section>`;
+  const q = S.q.inventario;
+  const col = k => {
+    const a = S.cat.filter(e => e.kind === LISTS[k].kind && (!q.trim() || Names.matches(e.name, q))).sort(byName);
+    const rows = a.map(e => catRow(e)).join("");
+    return `<section><h2 class="h-sec">${LISTS[k].title}</h2>${a.length ? "<ul>" + rows + "</ul>" : `<p class="empty">${q.trim() ? "Nada con ese nombre." : "Todavía no hay " + LISTS[k].all + " en la bodega."}</p>`}</section>`;
   };
-  return `<div class="inv">${col("tools", "Herramientas")}${col("materials", "Materiales")}</div>`;
+  return `<div class="inv">${col("tools")}${col("materials")}</div>`;
 }
-const inventario = () => `<input class="search" type="search" data-q="inventario" placeholder="Buscar en inventario" aria-label="Buscar en inventario" value="${esc(S.q.inventario)}"><div id="results">${inventarioResults()}</div>`;
+function catRow(e) {
+  const left = avail(e);
+  const info = `<span class="n"><a href="#/inventario/${e.id}">${esc(e.name)}</a><small>en parroquia: ${esc(qtxt(left, e.unit))}</small></span>`;
+  if (!isAdmin()) return `<li class="row">${info}<b class="t">${esc(qtxt(e.total, e.unit))}</b></li>`;
+  return `<li class="row">${info}<input class="tot" type="number" min="0" inputmode="numeric" value="${e.total}" data-cf="total" data-cid="${e.id}" aria-label="Total de ${esc(e.name)} en la bodega"><span class="u">${esc(e.unit)}</span></li>`;
+}
+const catAdd = () => `<form class="catadd" id="catadd" data-kind="">
+  <h2 class="h-sec" style="margin-top:0">Agregar a la bodega</h2>
+  <fieldset class="seg"><legend>¿Qué vas a agregar?</legend>
+    <label><input type="radio" name="kind" value="tool" required>Herramienta</label>
+    <label><input type="radio" name="kind" value="material">Material</label></fieldset>
+  <div class="add3"><input name="name" placeholder="Nombre, por ejemplo Taladro" required maxlength="60" aria-label="Nombre" autocomplete="off"><input name="total" type="number" min="0" value="1" inputmode="numeric" aria-label="Cantidad total"><input name="unit" placeholder="unidad" maxlength="12" aria-label="Unidad (sacos, m³, un)"><button class="btn" type="submit">Agregar</button></div>
+  <p class="hint" id="cathint" role="status"></p></form>`;
+const inventario = () => `<h1 class="h-sec big">Bodega central</h1>
+  <p class="mute">Todo el inventario. Lo que no está asignado a una cuadrilla queda en la parroquia.${isAdmin() ? "" : " Solo el administrador puede cambiarlo."}</p>
+  ${isAdmin() ? catAdd() : ""}
+  <input class="search" type="search" data-q="inventario" placeholder="Buscar en inventario" aria-label="Buscar en inventario" value="${esc(S.q.inventario)}"><div id="results">${inventarioResults()}</div>`;
 
-function item(key) {
-  const e = inventory().get(key);
-  const back = `<a class="back" href="#/inventario" aria-label="Volver al inventario">${BACK}</a>`;
-  if (!e) return `${back}<p class="empty">Ese artículo ya no está en el inventario.</p>`;
-  const par = S.cuad.find(c => c.parroquia);
-  const locs = regulares().filter(c => e.where.get(c.id) > 0).map(c => `<p class="loc"><b>${esc(qtxt(e.where.get(c.id), e.u))} en <a href="#/c/${c.id}/materiales">${esc(c.name)}</a></b>${c.address ? `<br>${esc(c.address)}` : ""}${c.lead ? `<br>a cargo de ${esc(c.lead)}` : ""}</p>`).join("");
-  const pq = par ? `<p class="loc"><b>${esc(qtxt(e.where.get(par.id) || 0, e.u))} en <a href="#/c/${par.id}">Parroquia</a></b></p>` : "";
-  return `${back}<h1 class="h-sec" style="font-size:2.4rem">${esc(e.n)}</h1><p class="mute">Total: ${esc(qtxt(e.total, e.u))}. Se encuentra en:</p>${locs}${pq}`;
+function itemView(id) {
+  const e = item(id), back = `<a class="back" href="#/inventario" aria-label="Volver al inventario">${BACK}</a>`;
+  if (!e) return `${back}<p class="empty">Ese elemento ya no está en la bodega.</p>`;
+  const left = avail(e), used = usedBy(e.id);
+  const locs = S.cuad.map(c => ({ c, q: [...c.materials, ...c.tools].filter(x => x.i == e.id).reduce((s, x) => s + x.q, 0) })).filter(x => x.q > 0)
+    .map(({ c, q }) => `<p class="loc"><b>${esc(qtxt(q, e.unit))} en <a href="#/c/${c.id}/materiales">${esc(c.name)}</a></b>${c.address ? `<br>${esc(c.address)}` : ""}${c.lead ? `<br>a cargo de ${esc(c.lead)}` : ""}</p>`).join("");
+  const head = isAdmin()
+    ? `<input class="ghost title" data-cf="name" data-cid="${e.id}" value="${esc(e.name)}" aria-label="Nombre" maxlength="60">`
+    : `<h1 class="h-sec big" style="margin-top:14px">${esc(e.name)}</h1>`;
+  const total = isAdmin()
+    ? `<div class="lead"><label for="tot">Total en la bodega</label><input class="ghost" id="tot" type="number" min="0" inputmode="numeric" data-cf="total" data-cid="${e.id}" value="${e.total}" style="max-width:8ch">${e.kind === "material" ? `<input class="ghost" data-cf="unit" data-cid="${e.id}" value="${esc(e.unit)}" placeholder="unidad" aria-label="Unidad" maxlength="12" style="max-width:10ch">` : ""}</div>`
+    : `<p class="mute">Total en la bodega: ${esc(qtxt(e.total, e.unit))}</p>`;
+  const del = isAdmin() ? (used > 0
+    ? `<p class="note">No se puede eliminar mientras haya ${esc(qtxt(used, e.unit))} asignados a cuadrillas.</p>`
+    : `<button class="link-danger" data-act="catdel" data-id="${e.id}">Eliminar de la bodega</button>`) : "";
+  return `${back}${head}<p class="mute">${e.kind === "tool" ? "Herramienta" : "Material"}</p>${total}<h2 class="h-sec">Se encuentra en</h2>${locs}<p class="loc"><b>${esc(qtxt(left, e.unit))} en <a href="#/parroquia">Parroquia</a></b></p>${del}`;
 }
 
 /* ---------- Router ---------- */
 function render() {
   const h = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   const page = h[0] || "";
-  document.querySelectorAll("[data-nav]").forEach(a => a.toggleAttribute("aria-current", a.dataset.nav === page));
-  document.querySelectorAll("[data-nav][aria-current]").forEach(a => a.setAttribute("aria-current", "page"));
+  document.querySelectorAll("[data-nav]").forEach(a => { if (a.dataset.nav === page) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (!S.ready) return;
   let html, title = "Construcción Misiones";
   if (page === "c") { html = detail(h[1], h[2] === "personas" ? "personas" : "materiales"); title = (cuad(h[1])?.name || "Cuadrilla") + " · " + title; }
+  else if (page === "parroquia") { html = parroquia(); title = "Parroquia · " + title; }
   else if (page === "avisos") { html = avisos(); title = "Avisos · " + title; }
   else if (page === "alumnos") { html = alumnos(); title = "Alumnos · " + title; }
-  else if (page === "inventario") { html = h[1] ? item(h[1]) : inventario(); title = "Inventario · " + title; }
+  else if (page === "inventario") { html = h[1] ? itemView(h[1]) : inventario(); title = "Bodega central · " + title; }
   else html = home();
   view.innerHTML = html;
   document.title = title;
 }
 window.addEventListener("hashchange", () => { render(); scrollTo(0, 0); });
 
+/* ---------- Elegir de la bodega al asignar a una cuadrilla ---------- */
+function suggest(form) {
+  const c = cuad(form.dataset.id), k = form.dataset.add, typed = form.elements.n.value;
+  const taken = new Set(c[k].map(x => x.i));
+  const pool = S.cat.filter(e => e.kind === LISTS[k].kind && !taken.has(e.id));
+  const all = pool.filter(e => !typed.trim() || Names.matches(e.name, typed)).sort(byName);
+  const box = form.querySelector(".sugg");
+  if (!all.length) {
+    box.innerHTML = `<p class="more">${typed.trim() ? "Nada coincide. Solo se pueden usar elementos de la bodega central." : pool.length ? "" : `No hay más ${LISTS[k].all} en la bodega central. El administrador puede agregarlos.`}</p>`;
+    return;
+  }
+  box.innerHTML = all.slice(0, 8).map(e => { const a = avail(e); return `<button type="button" class="opt" data-act="pick" data-i="${e.id}"${a < 1 ? ' aria-disabled="true"' : ""}><span>${esc(e.name)}</span><small>${a < 1 ? "sin saldo en la parroquia" : "quedan " + esc(qtxt(a, e.unit))}</small></button>`; }).join("")
+    + (all.length > 8 ? `<p class="more">Hay ${all.length - 8} más. Sigue escribiendo para acotar.</p>` : "");
+}
+function choose(form, e) {
+  form.elements.i.value = e.id; form.elements.n.value = e.name; form.classList.add("chosen");
+  form.elements.q.max = Math.max(1, avail(e)); form.querySelector(".hint").textContent = `Quedan ${qtxt(avail(e), e.unit)} en la parroquia.`;
+}
+
 /* ---------- Acciones ---------- */
 const refocus = sel => { const el = view.querySelector(sel); if (el) el.focus(); };
 
 document.addEventListener("click", async e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
-  const act = b.dataset.act, c = cuad(b.dataset.id), k = b.dataset.k, i = +b.dataset.i;
+  const act = b.dataset.act, c = cuad(b.dataset.id), k = b.dataset.k;
+  if (act === "pick") {
+    const it = item(b.dataset.i), f = b.closest("form");
+    if (!it) return;
+    if (avail(it) < 1) return toast(`No quedan “${it.name}” en la parroquia.`);
+    choose(f, it); f.elements.q.focus(); return;
+  }
   if (act === "newc") {
-    const n = regulares().length + 1;
-    dlg.querySelector("[name=name]").value = "Cuadrilla " + n;
+    dlg.querySelector("[name=name]").value = "Cuadrilla " + (S.cuad.length + 1);
     dlg.showModal(); dlg.querySelector("[name=name]").select(); return;
   }
   if (act === "closedlg") return dlg.close();
@@ -335,63 +470,141 @@ document.addEventListener("click", async e => {
     S.avisos = S.avisos.filter(a => a.id != b.dataset.id); render();
     return void call("DELETE", "/api/avisos/" + b.dataset.id);
   }
+  if (act === "catdel") {
+    const it = item(b.dataset.id);
+    if (!it || !confirm(`¿Eliminar “${it.name}” de la bodega central?`)) return;
+    const r = await call("DELETE", "/api/catalog/" + it.id);
+    if (r.ok) { S.cat = S.cat.filter(x => x.id !== it.id); location.hash = "#/inventario"; render(); } else load(true);
+    return;
+  }
   if (!c) return;
   if (act === "rmc") {
-    if (!confirm(`¿Eliminar ${c.name}? Se borrarán sus materiales, herramientas y personas.`)) return;
+    if (!confirm(`¿Eliminar ${c.name}? Lo que tiene asignado vuelve a la parroquia.`)) return;
     S.cuad = S.cuad.filter(x => x !== c); location.hash = "#/";
     return void call("DELETE", "/api/cuadrillas/" + c.id);
   }
-  if (act === "del") c[k].splice(i, 1);
-  if (act === "qty") c[k][i].q = Math.max(0, c[k][i].q + +b.dataset.d);
+  if (["materials", "tools"].includes(k)) {
+    const idx = c[k].findIndex(x => x.i == b.dataset.i), it = c[k][idx], cat = item(b.dataset.i);
+    if (!it) return;
+    if (act === "del") c[k].splice(idx, 1);
+    if (act === "qty") {
+      if (+b.dataset.d > 0 && avail(cat) < 1) return toast(`No quedan “${cat.name}” en la parroquia.`);
+      it.q = Math.max(0, it.q + +b.dataset.d);
+    }
+  } else if (act === "del") c[k].splice(+b.dataset.i, 1);
   save(c); render();
 });
 
 document.addEventListener("submit", async e => {
   const f = e.target;
+  e.preventDefault();
+  const d = new FormData(f);
   if (f.id === "newc") {
-    e.preventDefault();
-    const d = new FormData(f);
     const c = { id: Date.now(), name: d.get("name").trim(), address: d.get("address").trim(), lead: d.get("lead").trim(), motor: [], alumnos: [], materials: [], tools: [] };
     if (!c.name) return;
     S.cuad.push(c); f.reset(); dlg.close(); save(c); location.hash = "#/c/" + c.id; return;
   }
-  e.preventDefault();
-  const d = new FormData(f);
   if (f.id === "post") {
     try { localStorage.setItem("autor", d.get("author").trim()); } catch {}
-    const a = await call("POST", "/api/avisos", { author: d.get("author"), text: d.get("text") });
-    if (a) { S.avisos.unshift(a); render(); }
+    const r = await call("POST", "/api/avisos", { author: d.get("author"), text: d.get("text") });
+    if (r.ok) { S.avisos.unshift(r.data); render(); }
     return;
   }
-  const c = cuad(f.dataset.id), k = f.dataset.add, n = (d.get("n") || "").trim();
-  if (!c || !n) return;
-  if (k === "motor" || k === "alumnos") c[k].push(n);
-  else c[k].push({ n, q: Math.max(1, +d.get("q") || 1), ...(k === "materials" ? { u: (d.get("u") || "").trim() } : {}) });
-  save(c); render();
-  refocus(`form[data-add="${k}"] input[name=n]`);
+  if (f.id === "catadd") {
+    const name = d.get("name").trim(), kind = d.get("kind"), hint = $("#cathint");
+    const dup = S.cat.find(x => Names.same(x.name, name));
+    if (!kind) { hint.textContent = "Elige si es herramienta o material."; return; }
+    if (dup) { hint.textContent = dup.kind === kind ? `Ya existe “${dup.name}” en la bodega. Singular y plural cuentan como el mismo elemento.` : `“${dup.name}” ya existe como ${KIND_LABEL[dup.kind]}. Un elemento no puede ser material y herramienta a la vez.`; return; }
+    const r = await call("POST", "/api/catalog", { kind, name, unit: d.get("unit"), total: d.get("total") });
+    if (r.ok) { S.cat.push(r.data); render(); toast(`“${r.data.name}” se agregó a la bodega central.`); refocus("#catadd input[name=name]"); }
+    return;
+  }
+  const c = cuad(f.dataset.id), k = f.dataset.add;
+  if (!c) return;
+  if (k === "motor" || k === "alumnos") {
+    const n = (d.get("n") || "").trim(); if (!n) return;
+    c[k].push(n); save(c); render(); refocus(`form[data-add="${k}"] input[name=n]`); return;
+  }
+  // materials / tools: solo de la bodega, del tipo correcto y con saldo
+  const hint = f.querySelector(".hint"), typed = (d.get("n") || "").trim();
+  let it = item(d.get("i"));
+  if (!it && typed) it = S.cat.find(x => x.kind === LISTS[k].kind && Names.same(x.name, typed));
+  if (!it) {
+    const other = S.cat.find(x => Names.same(x.name, typed));
+    hint.textContent = !typed ? `Elige ${LISTS[k].one === "material" ? "un material" : "una herramienta"} de la lista.`
+      : other ? `“${other.name}” es ${other.kind === "tool" ? "una herramienta" : "un material"}, no ${other.kind === "tool" ? "un material" : "una herramienta"}.`
+      : `“${typed}” no está en la bodega central. Pídele al administrador que lo agregue.`;
+    return;
+  }
+  const q = Math.max(1, Math.floor(+d.get("q") || 1)), left = avail(it);
+  if (c[k].some(x => x.i === it.id)) { hint.textContent = `“${it.name}” ya está en esta cuadrilla. Usa + para sumar.`; return; }
+  if (left < 1) { hint.textContent = `No quedan “${it.name}” en la parroquia.`; return; }
+  if (q > left) { hint.textContent = `Solo quedan ${qtxt(left, it.unit)} en la parroquia.`; return; }
+  c[k].push({ i: it.id, q }); save(c); render();
 });
 
-document.addEventListener("change", e => {
-  const t = e.target, c = t.dataset.f && cuad(t.dataset.id); if (!c) return;
+document.addEventListener("change", async e => {
+  const t = e.target;
+  if (t.dataset.cf) { // cambios de la bodega central (solo administrador)
+    const it = item(t.dataset.cid); if (!it) return;
+    const f = t.dataset.cf, v = f === "total" ? Math.max(0, Math.floor(+t.value || 0)) : t.value.trim();
+    if (f === "name" && !v) { t.value = it.name; return; }
+    const r = await call("PUT", "/api/catalog/" + it.id, { [f]: v });
+    if (r.ok) Object.assign(it, r.data); else t.value = it[f];
+    return render();
+  }
+  const c = t.dataset.f && cuad(t.dataset.id); if (!c) return;
   const v = t.value.trim();
   if (t.dataset.f === "name" && !v) { t.value = c.name; return; }
   c[t.dataset.f] = v; save(c);
 });
 
 document.addEventListener("input", e => {
-  const t = e.target; if (!t.dataset.q) return;
-  S.q[t.dataset.q] = t.value;
-  $("#results").innerHTML = t.dataset.q === "alumnos" ? alumnosResults() : inventarioResults();
+  const t = e.target;
+  if (t.dataset.q) {
+    S.q[t.dataset.q] = t.value;
+    $("#results").innerHTML = t.dataset.q === "alumnos" ? alumnosResults() : inventarioResults();
+  } else if (t.name === "n" && t.form?.classList.contains("pick")) {
+    const f = t.form; f.elements.i.value = ""; f.classList.remove("chosen"); f.querySelector(".hint").textContent = "";
+    suggest(f);
+  } else if (t.name === "name" && t.form?.id === "catadd") {
+    const dup = S.cat.find(x => Names.same(x.name, t.value));
+    $("#cathint").textContent = dup ? `Ya existe “${dup.name}” como ${KIND_LABEL[dup.kind]}.` : "";
+  }
+});
+document.addEventListener("change", e => {
+  if (e.target.name === "kind" && e.target.form?.id === "catadd") e.target.form.dataset.kind = e.target.value;
+});
+document.addEventListener("focusin", e => {
+  const t = e.target;
+  if (t.name === "n" && t.form?.classList.contains("pick") && !t.form.classList.contains("chosen")) suggest(t.form);
 });
 
 // Actualiza lo que editan otras personas, sin interrumpir a quien está escribiendo.
 setInterval(() => {
   const a = document.activeElement;
-  if (document.hidden || (a && /INPUT|TEXTAREA/.test(a.tagName) && a.value)) return;
+  if (document.hidden || (a && /INPUT|TEXTAREA/.test(a.tagName) && (a.value || a.type === "number"))) return;
   load();
 }, 15000);
 
-render(); load();
+// Salir con fetch + recarga completa: un redirect desde la página con #/ruta no recarga el documento.
+$("#logout").addEventListener("click", async e => {
+  e.preventDefault();
+  await fetch("/logout", { method: "POST", redirect: "manual" }).catch(() => {});
+  location.assign("/");
+});
+
+(async () => {
+  render();
+  const me = await call("GET", "/api/me", undefined, true);
+  if (me.ok) {
+    S.role = me.data.role; S.open = me.data.open;
+    $("#who-label").textContent = ROLE_LABEL[S.role] || "";
+    $("#who").hidden = false; $("#logout").hidden = S.open;
+    if (S.role === "visitante") $("#logout").textContent = "Cambiar de rol";
+  }
+  await load();
+})();
 </script>
 </body>
 </html>
