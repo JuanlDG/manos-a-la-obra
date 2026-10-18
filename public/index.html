@@ -79,24 +79,10 @@ li .n{flex:1;overflow-wrap:anywhere}
 <main class="grid" id="grid"></main>
 </div>
 <script>
-const KEY="trabajos-solidarios-v1";
-const seed=()=>[
-{id:1,name:"Levantar muros – Casa 1",lead:"María González",status:"curso",pg:55,
- materials:[{n:"Ladrillos",q:850,u:"un"},{n:"Cemento",q:24,u:"sacos"},{n:"Arena",q:6,u:"m³"}],
- tools:[{n:"Nivel",q:2},{n:"Carretilla",q:3},{n:"Palas",q:4}],
- people:["Juan Pérez","Camila Rojas","Pedro Soto","Ana Muñoz"]},
-{id:2,name:"Instalación de techo",lead:"Carlos Fuentes",status:"pend",pg:10,
- materials:[{n:"Planchas de zinc",q:30,u:"un"},{n:"Vigas de madera",q:40,u:"m"},{n:"Clavos",q:5,u:"kg"}],
- tools:[{n:"Taladro",q:2},{n:"Martillos",q:6},{n:"Escalera",q:2}],
- people:["Luis Vargas","Sofía Díaz","Marcos Reyes"]},
-{id:3,name:"Construcción de piso",lead:"Rosa Herrera",status:"fin",pg:100,
- materials:[{n:"Cemento",q:12,u:"sacos"},{n:"Grava",q:3,u:"m³"}],
- tools:[{n:"Llana",q:3},{n:"Regla de aluminio",q:2}],
- people:["Elena Castro","Tomás Núñez"]}];
-let jobs,filter="all";
-try{jobs=JSON.parse(localStorage.getItem(KEY))}catch(e){}
-if(!Array.isArray(jobs))jobs=seed();
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(jobs))}catch(e){}};
+let jobs=[],filter="all",warned=false;
+const fail=e=>{console.error(e);if(!warned){warned=true;alert("No se pudo guardar en el servidor. Revisa tu conexión.")}};
+const api=(m,id,body)=>fetch("/api/jobs/"+id,{method:m,headers:{"Content-Type":"application/json"},body:body&&JSON.stringify(body)}).then(r=>{if(!r.ok)throw new Error(r.status);warned=false}).catch(fail);
+const load=()=>fetch("/api/jobs").then(r=>r.json()).then(d=>{jobs=d;render()}).catch(fail);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ST={pend:"Pendiente",curso:"En curso",fin:"Terminado"};
 const SC={pend:"s-pend",curso:"s-curso",fin:"s-fin"};
@@ -135,7 +121,7 @@ function render(){
   document.getElementById("grid").innerHTML=sh.length?sh.map(card).join(""):'<p class="empty">No hay trabajos en esta categoría.</p>';
 }
 const get=id=>jobs.find(j=>j.id==id);
-const upd=()=>{save();render()};
+const upd=j=>{if(j)api("PUT",j.id,j);render()};
 
 document.addEventListener("click",e=>{
   const f=e.target.closest("[data-f]");if(f){filter=f.dataset.f;return render()}
@@ -143,31 +129,32 @@ document.addEventListener("click",e=>{
   const j=get(b.dataset.id),k=b.dataset.k,i=+b.dataset.i;
   if(b.dataset.act==="del")j[k].splice(i,1);
   if(b.dataset.act==="qty")j[k][i].q=Math.max(0,j[k][i].q+ +b.dataset.d);
-  if(b.dataset.act==="rm"){if(!confirm("¿Eliminar este trabajo?"))return;jobs=jobs.filter(x=>x!==j)}
-  upd();
+  if(b.dataset.act==="rm"){if(!confirm("¿Eliminar este trabajo?"))return;jobs=jobs.filter(x=>x!==j);api("DELETE",j.id);return render()}
+  upd(j);
 });
 document.addEventListener("submit",e=>{
   e.preventDefault();const f=e.target,d=new FormData(f);
   if(f.id==="newjob"){
-    jobs.push({id:Date.now(),name:d.get("name").trim(),lead:d.get("lead").trim(),status:"pend",pg:0,materials:[],tools:[],people:[]});
-    f.reset();return upd();
+    const nj={id:Date.now(),name:d.get("name").trim(),lead:d.get("lead").trim(),status:"pend",pg:0,materials:[],tools:[],people:[]};
+    jobs.push(nj);f.reset();return upd(nj);
   }
   const j=get(f.dataset.id),k=f.dataset.add,n=d.get("n").trim();if(!n)return;
   if(k==="people")j.people.push(n);
   else j[k].push({n,q:+d.get("q")||1,...(k==="materials"?{u:(d.get("u")||"").trim()}:{})});
-  upd();
+  upd(j);
 });
 document.addEventListener("change",e=>{
   const t=e.target;
-  if(t.dataset.lead){get(t.dataset.lead).lead=t.value.trim();upd()}
-  if(t.dataset.status){const j=get(t.dataset.status);j.status=t.value;if(t.value==="fin")j.pg=100;upd()}
-  if(t.dataset.pg){const j=get(t.dataset.pg);j.pg=+t.value;if(j.pg===100)j.status="fin";else if(j.pg>0&&j.status==="pend")j.status="curso";upd()}
+  if(t.dataset.lead){const j=get(t.dataset.lead);j.lead=t.value.trim();upd(j)}
+  if(t.dataset.status){const j=get(t.dataset.status);j.status=t.value;if(t.value==="fin")j.pg=100;upd(j)}
+  if(t.dataset.pg){const j=get(t.dataset.pg);j.pg=+t.value;if(j.pg===100)j.status="fin";else if(j.pg>0&&j.status==="pend")j.status="curso";upd(j)}
 });
 document.getElementById("theme").onclick=()=>{
   const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;
   r.dataset.theme=dark?"light":"dark";
 };
-render();
+render();load();
+setInterval(()=>{const a=document.activeElement;if(!a||a===document.body)load()},15000);
 </script>
 </body>
 </html>
